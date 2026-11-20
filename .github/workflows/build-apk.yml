@@ -31,10 +31,10 @@ jobs:
         run: |
           apk=app/build/outputs/apk/debug/app-debug.apk
           build_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$build_tools/apksigner" verify --min-sdk-version 30 "$apk"
+          "$build_tools/apksigner" verify --print-certs --min-sdk-version 30 "$apk"
           badging=$("$build_tools/aapt" dump badging "$apk")
           grep -F "package: name='com.haierlite.tv'" <<< "$badging"
-          grep -F "versionName='1.4'" <<< "$badging"
+          grep -F "versionName='1.6'" <<< "$badging"
           grep -F "sdkVersion:'23'" <<< "$badging"
           native_entries=$(unzip -Z1 "$apk" | awk '/^lib\/.*[.]so$/')
           if [[ -n "$native_entries" ]]; then
