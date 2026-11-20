@@ -1,5 +1,5 @@
 plugins { id 'com.android.application' }
 android { namespace 'com.haierlite.tv'; compileSdk 35
-    defaultConfig { applicationId 'com.haierlite.tv'; minSdk 23; targetSdk 30; versionCode 14; versionName '1.4' }
+    defaultConfig { applicationId 'com.haierlite.tv'; minSdk 23; targetSdk 30; versionCode 16; versionName '1.6' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
