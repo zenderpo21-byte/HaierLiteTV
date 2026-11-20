@@ -34,6 +34,12 @@ jobs:
           "$build_tools/apksigner" verify --min-sdk-version 30 "$apk"
           badging=$("$build_tools/aapt" dump badging "$apk")
           grep -F "package: name='com.haierlite.tv'" <<< "$badging"
+          grep -F "versionName='1.4'" <<< "$badging"
+          grep -F "sdkVersion:'23'" <<< "$badging"
+          native_entries=$(unzip -Z1 "$apk" | awk '/^lib\/.*[.]so$/')
+          if [[ -n "$native_entries" ]]; then
+            grep '^lib/armeabi-v7a/' <<< "$native_entries"
+          fi
           grep -F "targetSdkVersion:'30'" <<< "$badging"
           grep -F "leanback-launchable-activity:" <<< "$badging"
       - name: Upload APK
