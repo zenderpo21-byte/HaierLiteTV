@@ -1,35 +1,15 @@
-# Haier Lite TV v1.2 — Android TV 11
+# Haier Lite TV v1.4 Pink Edition
 
-Lightweight Java Android TV launcher. Package `com.haierlite.tv`. Designed for remote D-pad input; no root required. The workflow builds and verifies a signed debug APK.
+Android TV 11 launcher with a pastel pink mountain backdrop and one centered horizontal row of 164 dp square favorites. Use the plus tile to choose favorites. All apps and settings are available from the top menu.
 
-## Build without Android Studio
+The sleep timer offers 10, 20, 30, 40, 60, 90, 120 and 240 minutes. It displays a reminder while the launcher process is alive. It does not power off the TV.
 
-1. Push to `main` or run **Actions → Build Haier Lite TV APK → Run workflow**.
-2. Open the successful run and download `HaierLiteTV-debug-APK` under **Artifacts**.
-3. Extract `app-debug.apk` and rename it to `HaierLiteTV.apk` if desired.
-
-## Install on Android TV
-
-Replace `TV_IP` with your television’s IP address.
+GitHub Actions builds and verifies `app-debug.apk`. Download the ZIP from the successful run under **Artifacts → HaierLiteTV-debug-APK** and extract the APK.
 
 ```bat
-adb -s TV_IP:5555 install -r HaierLiteTV.apk
+adb connect TV_IP:5555
+adb -s TV_IP:5555 install -r app-debug.apk
 adb -s TV_IP:5555 shell am start -n com.haierlite.tv/.MainActivity
 ```
 
-Test D-pad, app launch, Android settings, and remote Home **before** assigning default:
-
-```bat
-adb -s TV_IP:5555 shell cmd package set-home-activity com.haierlite.tv
-adb -s TV_IP:5555 shell input keyevent 3
-adb -s TV_IP:5555 shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
-```
-
-Restore Google TV launcher:
-
-```bat
-adb -s TV_IP:5555 shell cmd package set-home-activity com.google.android.tvlauncher
-adb -s TV_IP:5555 shell input keyevent 3
-```
-
-**Limits:** Home selection is controlled by Android, not guaranteed by OEM firmware. This is not kiosk/Device Owner and does not lock users into the app. The internal Exit menu opens HOME settings if supported; closing an actual default HOME may just relaunch it. Do not disable any OEM/system packages. For power-on behavior, Android typically launches the default HOME when it boots to the home screen, but TVs may resume the last input/app instead.
+Replace `TV_IP` with the TV's IP address. Updating an installed copy in place requires the same signing key. GitHub-hosted runners generate a debug key unless a fixed signing key is configured. No system launcher changes are required.
