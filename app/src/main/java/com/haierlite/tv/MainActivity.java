@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int WHITE = 0xfff7f8fc, MUTED = 0xffb1b7c8;
+    private static final int ACCENT = 0xffff8c9d;
     private static final long WEATHER_INTERVAL = 30 * 60_000L;
     private static final Locale RUSSIAN = new Locale("ru", "RU");
     private static final String WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
@@ -134,7 +135,7 @@ public class MainActivity extends Activity {
         view.setGravity(Gravity.CENTER);
         view.setOnClickListener(v -> action.run());
         view.setOnFocusChangeListener((v, focused) ->
-                v.setBackground(focused ? surface(0xff343943, 18, 0xff626a79) : null));
+                v.setBackground(focused ? surface(0xff4c2635, 18, ACCENT) : null));
         return view;
     }
 
@@ -151,9 +152,9 @@ public class MainActivity extends Activity {
         TextView name = label("Haier Lite TV", 32, WHITE);
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         header.addView(name);
-        TextView version = label("v1.6 Minimal", 17, WHITE);
+        TextView version = label(getString(R.string.edition_name), 20, ACCENT);
         version.setPadding(px(15), 0, px(15), 0);
-        version.setBackground(surface(0xff323640, 22, 0));
+        version.setBackground(surface(0xff3a1928, 22, 0));
         LinearLayout.LayoutParams badge = new LinearLayout.LayoutParams(-2, px(36));
         badge.leftMargin = px(30);
         header.addView(version, badge);
@@ -320,7 +321,7 @@ public class MainActivity extends Activity {
         }
 
         @Override protected void onDraw(Canvas canvas) {
-            paint.setColor(WHITE);
+            paint.setColor(isFocused() ? ACCENT : WHITE);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(Math.max(1, px(3)));
@@ -391,7 +392,7 @@ public class MainActivity extends Activity {
         panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(px(17), px(18), px(17), px(16));
-        panel.setBackground(surface(0xfa191d25, 32, 0xff454b58));
+        panel.setBackground(surface(0xfa21121d, 32, 0xff5f3348));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(px(382), -2, Gravity.RIGHT | Gravity.TOP);
         position.setMargins(0, px(158), px(27), 0);
         root.addView(panel, position);
@@ -424,7 +425,7 @@ public class MainActivity extends Activity {
         item.setFocusable(true);
         item.setOnClickListener(v -> action.run());
         item.setOnFocusChangeListener((v, focused) ->
-                v.setBackground(focused ? surface(0xff383e49, 20, 0xff666e7c) : null));
+                v.setBackground(focused ? surface(0xff4c2635, 20, ACCENT) : null));
         TextView symbol = label(glyph, 32, WHITE);
         symbol.setGravity(Gravity.CENTER);
         item.addView(symbol, new LinearLayout.LayoutParams(px(52), -1));
@@ -480,8 +481,8 @@ public class MainActivity extends Activity {
     }
 
     private void showBackground() {
-        new AlertDialog.Builder(this).setTitle("Графитовый фон")
-                .setSingleChoiceItems(new String[]{"Серебристые волны", "Однотонный графит"},
+        new AlertDialog.Builder(this).setTitle("Фон")
+                .setSingleChoiceItems(new String[]{"Бордовые волны", "Однотонный графит"},
                         prefs.getInt("background", 0), (dialog, index) -> {
                             prefs.edit().putInt("background", index).apply();
                             applyScreen();
@@ -730,16 +731,16 @@ public class MainActivity extends Activity {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path[] shapes = {new Path(), new Path(), new Path()};
         private final Shader[] fills = {
-            new RadialGradient(722, 74, 690, new int[]{0xff999eaf, 0xff343946, 0xff171a22},
+            new RadialGradient(722, 74, 690, new int[]{0xffa64a64, 0xff4b1b2f, 0xff21121d},
                     new float[]{0, .36f, 1}, Shader.TileMode.CLAMP),
-            new LinearGradient(715, 271, 903, 515, new int[]{0xff626d83, 0xff323946, 0xff101319},
+            new LinearGradient(715, 271, 903, 515, new int[]{0xff804263, 0xff421a35, 0xff160e19},
                     new float[]{0, .27f, .83f}, Shader.TileMode.CLAMP),
-            new RadialGradient(1103, 697, 540, new int[]{0xff929fb7, 0xff292f3c, 0xff14171e},
+            new RadialGradient(1103, 697, 540, new int[]{0xff8e3c52, 0xff3c1726, 0xff1b1019},
                     new float[]{0, .31f, .92f}, Shader.TileMode.CLAMP)
         };
-        private final Shader base = new LinearGradient(0, 0, 1672, 941, 0xff1a1e27, 0xff0d0f14, Shader.TileMode.CLAMP);
+        private final Shader base = new LinearGradient(0, 0, 1672, 941, 0xff25121f, 0xff100b13, Shader.TileMode.CLAMP);
         private final Shader edge = new LinearGradient(250, 250, 1100, 650,
-                new int[]{0x095c6372, 0xb1c0c8d9, 0x075c6372, 0xa5c0c8d9},
+                new int[]{0x09934c61, 0xb1e99eaf, 0x07934c61, 0xa5e99eaf},
                 new float[]{0, .29f, .67f, 1}, Shader.TileMode.CLAMP);
         Waves() {
             shapes[0].moveTo(-20, 500);

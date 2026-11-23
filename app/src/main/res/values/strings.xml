@@ -1,1 +1,4 @@
-<resources><string name="app_name">Haier Lite TV</string></resources>
+<resources>
+    <string name="app_name">Haier Lite TV</string>
+    <string name="edition_name">v1.7 · High School DxD Edition</string>
+</resources>
