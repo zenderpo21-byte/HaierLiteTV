@@ -1,4 +1,4 @@
-# Haier Lite TV v1.7.3 — High School DxD Edition
+# Haier Lite TV v1.7.4 — High School DxD Edition
 
 An Android TV 11 launcher with a Full HD DxD Edition layout, separate wallpaper, a scrollable row of installed app icons on the left half of the screen, and shortcuts for TV channels, applications and files. Open the applications grid or the Applications settings to manage favorites. Use the gear, MENU or SETTINGS to open settings, and Back to close the panel.
 
@@ -12,7 +12,7 @@ Open Haier Lite TV from the Yandex TV apps list. Haier Lite TV is available in t
 
 ## Boot diagnostics
 
-After `BOOT_COMPLETED`, the app checks at 2, 5 and 8 seconds while it is selected as HOME. It requests at most one launch and only when it can verify that the stock Yandex Home activity is in front, with no active playback or microphone capture. It does not draw any overlays. Android 11 firmware can reject the request.
+After `BOOT_COMPLETED`, the app checks at 2, 5 and 8 seconds while it is selected as HOME. It requests launch only when it can verify that the stock Yandex Home activity is in front, with no active playback or microphone capture. After the first request it checks at +5, +10, +20 and +30 seconds and retries only if the stock Yandex Home activity returned. Interacting with Haier Lite TV or detecting media, microphone capture or another foreground activity ends the checks. It does not draw any overlays. Android 11 firmware can reject the request.
 
 On the target TV, grant the optional special access using system settings if available, or through authorized ADB without root:
 
@@ -27,4 +27,4 @@ A `MainActivity received the boot launch` entry confirms that the request reache
 
 ## Signing and updates
 
-v1.7.3 starts the permanent signing lineage. It requires a clean installation when the previous APK was signed with a different key. Keep an offline backup of the private keystore and configure it through Actions secrets `HAIER_KEYSTORE_BASE64`, `HAIER_KEYSTORE_PASSWORD`, `HAIER_KEY_ALIAS` and, if different from the keystore password, `HAIER_KEY_PASSWORD`. The workflow checks the permanent certificate fingerprint before uploading a release APK.
+v1.7.4 uses the same permanent signing certificate as the published v1.7.3 APK. Keep an offline backup of the private keystore and configure it through Actions secrets `HAIER_KEYSTORE_BASE64`, `HAIER_KEYSTORE_PASSWORD`, `HAIER_KEY_ALIAS` and, if different from the keystore password, `HAIER_KEY_PASSWORD`. The workflow checks the permanent certificate fingerprint before uploading a release APK.

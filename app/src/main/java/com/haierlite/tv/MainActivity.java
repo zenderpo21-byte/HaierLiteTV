@@ -476,7 +476,7 @@ public class MainActivity extends Activity {
         List<Map.Entry<String, AppEntry>> list = sortedApps();
         String[] names = new String[list.size()];
         for (int i = 0; i < names.length; i++) names[i] = list.get(i).getValue().title;
-        new AlertDialog.Builder(this).setTitle("Приложения")
+        homeDialog().setTitle("Приложения")
                 .setItems(names, (dialog, index) -> launch(list.get(index).getValue()))
                 .setNeutralButton("Избранное", (dialog, which) -> showFavorites())
                 .setNegativeButton("Закрыть", null).show();
@@ -492,7 +492,7 @@ public class MainActivity extends Activity {
             names[i] = list.get(i).getValue().title;
             enabled[i] = selected.contains(list.get(i).getKey());
         }
-        new AlertDialog.Builder(this).setTitle("Приложения на главном экране")
+        homeDialog().setTitle("Приложения на главном экране")
                 .setMultiChoiceItems(names, enabled, (dialog, index, checked) -> enabled[index] = checked)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     favorites.clear();
@@ -568,9 +568,14 @@ public class MainActivity extends Activity {
         returnFocus = null;
     }
 
+    @Override public void onUserInteraction() {
+        super.onUserInteraction();
+        BootReceiver.cancelRechecksOnInteraction(this);
+    }
+
     @Override public void onBackPressed() {
         if (panel != null) closePanel();
-        else super.onBackPressed();
+        // At the root of the HOME task, Back leaves the launcher visible.
     }
 
     @Override public boolean onKeyDown(int key, KeyEvent event) {
@@ -581,8 +586,19 @@ public class MainActivity extends Activity {
         return super.onKeyDown(key, event);
     }
 
+    private AlertDialog.Builder homeDialog() {
+        return new AlertDialog.Builder(this).setOnKeyListener((dialog, key, event) -> {
+            if (key != KeyEvent.KEYCODE_BACK || panel == null) return false;
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                dialog.cancel();
+                closePanel();
+            }
+            return true;
+        });
+    }
+
     private void showScreen() {
-        new AlertDialog.Builder(this).setTitle("Экран")
+        homeDialog().setTitle("Экран")
                 .setItems(new String[]{"Яркость интерфейса", "Оформление и фон"}, (dialog, index) -> {
                     if (index == 0) showBrightness();
                     else showBackground();
@@ -590,7 +606,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBrightness() {
-        new AlertDialog.Builder(this).setTitle("Яркость только в Haier Lite TV")
+        homeDialog().setTitle("Яркость только в Haier Lite TV")
                 .setSingleChoiceItems(new String[]{"Системная", "30%", "55%", "80%", "100%"},
                         prefs.getInt("brightness_index", 0), (dialog, index) -> {
                             prefs.edit().putInt("brightness_index", index).apply();
@@ -600,7 +616,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBackground() {
-        new AlertDialog.Builder(this).setTitle("Фон")
+        homeDialog().setTitle("Фон")
                 .setSingleChoiceItems(new String[]{"DxD Edition", "Однотонный графит"},
                         prefs.getInt("background", 0), (dialog, index) -> {
                             prefs.edit().putInt("background", index).apply();
@@ -645,13 +661,13 @@ public class MainActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar bar) {}
             @Override public void onStopTrackingTouch(SeekBar bar) {}
         });
-        new AlertDialog.Builder(this).setTitle("Системная громкость")
+        homeDialog().setTitle("Системная громкость")
                 .setView(seek).setPositiveButton("Закрыть", null).show();
         seek.requestFocus();
     }
 
     private void showNetwork() {
-        new AlertDialog.Builder(this).setTitle("Сеть")
+        homeDialog().setTitle("Сеть")
                 .setItems(new String[]{"Wi-Fi", "Ethernet и другие сети"}, (dialog, index) -> {
                     if (index == 0) openSystem(Settings.ACTION_WIFI_SETTINGS, Settings.ACTION_SETTINGS);
                     else openSystem(Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_SETTINGS);
@@ -678,7 +694,7 @@ public class MainActivity extends Activity {
         items[minutes.length] = "Отменить таймер";
         long left = Math.max(0, (until - System.currentTimeMillis() + 59_999L) / 60_000L);
         String title = left == 0 ? "Таймер сна · напоминание" : "Таймер сна · осталось " + left + " мин";
-        new AlertDialog.Builder(this).setTitle(title).setItems(items, (dialog, index) -> {
+        homeDialog().setTitle(title).setItems(items, (dialog, index) -> {
             if (index == minutes.length) {
                 prefs.edit().remove("sleep_at").apply();
                 toast("Таймер отменён");
@@ -700,7 +716,7 @@ public class MainActivity extends Activity {
             return;
         }
         prefs.edit().remove("sleep_at").apply();
-        new AlertDialog.Builder(this).setTitle("Таймер сна завершён")
+        homeDialog().setTitle("Таймер сна завершён")
                 .setMessage("Чтобы выключить телевизор, нажмите кнопку питания на пульте.")
                 .setPositiveButton("Понятно", null).show();
     }

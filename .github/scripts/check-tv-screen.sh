@@ -87,6 +87,39 @@ if ! grep -F 'text="Приложения"' <<< "$apps" >/dev/null; then
   exit 1
 fi
 adb shell input keyevent KEYCODE_BACK
+returned=$(dump_screen)
+grep -F 'content-desc="Приложения"' <<< "$returned" >/dev/null
+if grep -F 'text="Приложения" resource-id="android:id/alertTitle"' <<< "$returned"; then
+  echo "Back did not dismiss the applications dialog"
+  exit 1
+fi
+
+adb shell input keyevent KEYCODE_MENU
+settings=$(dump_screen)
+grep -F 'text="Яркость и фон"' <<< "$settings" >/dev/null
+adb shell input keyevent KEYCODE_DPAD_CENTER
+screen_settings=$(dump_screen)
+grep -F 'text="Яркость интерфейса"' <<< "$screen_settings" >/dev/null
+adb shell input keyevent KEYCODE_BACK
+returned=$(dump_screen)
+if grep -E 'text="(Яркость интерфейса|Яркость и фон)"' <<< "$returned"; then
+  echo "Back did not return from an internal settings dialog to the launcher root"
+  exit 1
+fi
+
+adb shell input keyevent KEYCODE_MENU
+settings=$(dump_screen)
+grep -F 'text="Яркость и фон"' <<< "$settings" >/dev/null
+adb shell input keyevent KEYCODE_BACK
+returned=$(dump_screen)
+if grep -F 'text="Яркость и фон"' <<< "$returned"; then
+  echo "Back did not close the settings panel"
+  exit 1
+fi
+
+adb shell input keyevent KEYCODE_BACK
+returned=$(dump_screen)
+grep -F 'content-desc="Приложения"' <<< "$returned" >/dev/null
 adb shell input keyevent KEYCODE_HOME
 home_activity=$(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)
 if [[ -z "$home_activity" || "$home_activity" == *com.haierlite.tv* ]]; then

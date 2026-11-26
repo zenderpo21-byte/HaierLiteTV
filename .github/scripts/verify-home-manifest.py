@@ -16,7 +16,7 @@ EXPECTED = {
 for filename in sys.argv[1:]:
     root = ET.parse(filename).getroot()
     if (root.get("package"), root.get(ANDROID + "versionCode"), root.get(ANDROID + "versionName")) != (
-        PACKAGE, "20", "1.7.3"
+        PACKAGE, "21", "1.7.4"
     ):
         sys.exit(f"{filename}: unexpected package, versionCode or versionName")
 
@@ -49,4 +49,4 @@ for filename in sys.argv[1:]:
         }):
         sys.exit(f"{filename}: missing protected BOOT_COMPLETED registration")
 
-    print(f"Verified {Path(filename).name}: v1.7.3 (20), exported MainActivity, HOME/DEFAULT both launcher filters and BOOT_COMPLETED")
+    print(f"Verified {Path(filename).name}: v1.7.4 (21), exported MainActivity, HOME/DEFAULT both launcher filters and BOOT_COMPLETED")
