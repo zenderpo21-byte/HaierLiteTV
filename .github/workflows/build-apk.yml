@@ -70,7 +70,10 @@ jobs:
           printf 'y\n' | "$sdkmanager" "platform-tools" "emulator" "$image"
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
           adb start-server
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/haier-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo no | "$avdmanager" create avd --force --name haier-tv --package "$image" --device tv_1080p
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx haier-tv
           "$ANDROID_HOME/emulator/emulator" -avd haier-tv -no-window -gpu swiftshader_indirect \
             -noaudio -no-boot-anim -no-snapshot > "$RUNNER_TEMP/haier-emulator.log" 2>&1 &
           emulator_pid=$!
