@@ -41,12 +41,21 @@ if grep -E 'content-desc="(Трансляция|Яндекс ТВ)"' <<< "$home"
 fi
 
 adb shell input keyevent KEYCODE_DPAD_DOWN
+adb shell input keyevent KEYCODE_DPAD_LEFT KEYCODE_DPAD_LEFT KEYCODE_DPAD_RIGHT
+selected=$(dump_screen)
+if ! grep -E 'content-desc="Приложения"[^>]*focused="true"' <<< "$selected" >/dev/null; then
+  echo "D-pad did not focus the center Applications control"
+  exit 1
+fi
 adb shell input keyevent KEYCODE_DPAD_CENTER
 apps=$(dump_screen)
-grep -F 'text="Закрыть"' <<< "$apps" >/dev/null
+if ! grep -F 'text="Приложения"' <<< "$apps" >/dev/null; then
+  echo "Applications dialog did not open"
+  exit 1
+fi
 adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_HOME
-home_activity=$(adb shell dumpsys activity activities | grep -m1 'mResumedActivity' || true)
+home_activity=$(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)
 if [[ -z "$home_activity" || "$home_activity" == *com.haierlite.tv* ]]; then
   echo "System HOME did not come to the foreground: $home_activity"
   exit 1

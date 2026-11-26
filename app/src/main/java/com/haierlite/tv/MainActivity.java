@@ -36,10 +36,15 @@ public class MainActivity extends Activity {
     private static final int WHITE = 0xfff7f8fc, MUTED = 0xffb1b7c8;
     private static final int ACCENT = 0xffff2448;
     private static final int OPEN_FILE = 1;
-    private static final List<String> PREFERRED_APPS = Arrays.asList(
-            "ru.kinopoisk.tv", "com.google.android.youtube.tv", "ru.kinopoisk",
-            "ru.ivi.client", "ru.rutube.app", "com.yandex.tv.home",
-            "org.telegram.messenger", "com.android.vending");
+    private static final String[][] APP_SLOTS = {
+        {"com.google.android.youtube.tv"},
+        {"ru.kinopoisk.tv", "ru.kinopoisk"},
+        {"ru.ivi.client"},
+        {"ru.rutube.app", "ru.rutube"},
+        {"ru.yandex.searchplugin", "com.yandex.tv.home"},
+        {"org.telegram.messenger"},
+        {"com.android.vending"}
+    };
     private static final long WEATHER_INTERVAL = 30 * 60_000L;
     private static final Locale RUSSIAN = new Locale("ru", "RU");
     private static final String WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
@@ -171,8 +176,8 @@ public class MainActivity extends Activity {
 
     private Drawable controlBackground(boolean focused) {
         GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                focused ? new int[]{0xffab1232, 0xff3a1018, 0xff981027}
-                        : new int[]{0xe75a1118, 0xee170d0e, 0xe768101a});
+                focused ? new int[]{0xff840b27, 0xff280c11, 0xff960721}
+                        : new int[]{0xf46e0715, 0xf51a0d0d, 0xf51a0d0d, 0xf5740818});
         drawable.setCornerRadius(px(44));
         drawable.setStroke(px(focused ? 3 : 1), focused ? WHITE : 0xffff092b);
         return drawable;
@@ -182,6 +187,11 @@ public class MainActivity extends Activity {
         root = new FrameLayout(this);
         setContentView(root);
         applyScreen();
+
+        View clockShade = new View(this);
+        clockShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xd30e080a, 0xa20e080a, 0x000e080a}));
+        place(clockShade, 0, 113, 384, 267);
 
         ImageView crest = new ImageView(this);
         crest.setImageResource(R.drawable.dxd_crest);
@@ -317,11 +327,6 @@ public class MainActivity extends Activity {
         }
         apps.clear();
         apps.putAll(detected);
-        if (!prefs.contains("favorites") && favorites.isEmpty()) {
-            for (String pkg : PREFERRED_APPS) {
-                if (apps.containsKey(pkg)) favorites.add(pkg);
-            }
-        }
         return changed;
     }
 
@@ -353,20 +358,53 @@ public class MainActivity extends Activity {
         return list;
     }
 
+    private Set<String> defaultFavorites() {
+        Set<String> selected = new HashSet<>();
+        for (String[] candidates : APP_SLOTS) {
+            for (String pkg : candidates) {
+                if (!apps.containsKey(pkg)) continue;
+                selected.add(pkg);
+                break;
+            }
+        }
+        return selected;
+    }
+
     private void renderFavorites() {
         row.removeAllViews();
-        List<Map.Entry<String, AppEntry>> entries = sortedApps();
-        entries.sort(Comparator.comparingInt(item -> {
-            int index = PREFERRED_APPS.indexOf(item.getKey());
-            return index < 0 ? PREFERRED_APPS.size() : index;
-        }));
-        for (Map.Entry<String, AppEntry> item : entries) {
-            if (!favorites.contains(item.getKey())) continue;
-            AppEntry entry = item.getValue();
-            addTile(new Tile(entry.title, icon(item.getKey(), entry)), () -> launch(entry));
+        Bitmap tvIcon = Bitmap.createBitmap(px(132), px(132), Bitmap.Config.ARGB_8888);
+        Drawable tv = getDrawable(R.drawable.ic_play_tile);
+        tv.setBounds(0, 0, tvIcon.getWidth(), tvIcon.getHeight());
+        tv.draw(new Canvas(tvIcon));
+        addTile(new Tile("Открыть ТВ-каналы", tvIcon, 66), this::openChannels);
+        Set<String> selected = prefs.contains("favorites") ? favorites : defaultFavorites();
+        Set<String> shown = new HashSet<>();
+        for (String[] candidates : APP_SLOTS) {
+            String pkg = null;
+            for (String candidate : candidates) {
+                if (!apps.containsKey(candidate) || !selected.contains(candidate)) continue;
+                pkg = candidate;
+                break;
+            }
+            if (pkg == null) {
+                row.addView(new Space(this), new LinearLayout.LayoutParams(px(169), -1));
+            } else {
+                shown.add(pkg);
+                addFavorite(pkg);
+            }
         }
-        addTile(new Tile("Все приложения", null), this::showApps);
+        for (Map.Entry<String, AppEntry> item : sortedApps()) {
+            if (selected.contains(item.getKey()) && !shown.contains(item.getKey())) {
+                addFavorite(item.getKey());
+            }
+        }
+        addTile(new Tile("Все приложения", null, 63), this::showApps);
         row.getChildAt(0).requestFocus();
+    }
+
+    private void addFavorite(String pkg) {
+        AppEntry entry = apps.get(pkg);
+        addTile(new Tile(entry.title, icon(pkg, entry), 59), () -> launch(entry));
     }
 
     private void addTile(Tile tile, Runnable action) {
@@ -398,14 +436,17 @@ public class MainActivity extends Activity {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final RectF iconBounds = new RectF(), corners = new RectF();
 
-        Tile(String description, Bitmap icon) {
+        private final int iconHalfSize;
+
+        Tile(String description, Bitmap icon, int iconHalfSize) {
             super(MainActivity.this);
             this.icon = icon;
+            this.iconHalfSize = iconHalfSize;
             setContentDescription(description);
         }
 
         @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
-            float x = w / 2f, y = h / 2f, half = px(59);
+            float x = w / 2f, y = h / 2f, half = px(iconHalfSize);
             iconBounds.set(x - half, y - half, x + half, y + half);
             corners.set(px(6), px(14), w - px(6), h - px(14));
         }
@@ -475,9 +516,10 @@ public class MainActivity extends Activity {
         List<Map.Entry<String, AppEntry>> list = sortedApps();
         String[] names = new String[list.size()];
         boolean[] enabled = new boolean[list.size()];
+        Set<String> selected = prefs.contains("favorites") ? favorites : defaultFavorites();
         for (int i = 0; i < list.size(); i++) {
             names[i] = list.get(i).getValue().title;
-            enabled[i] = favorites.contains(list.get(i).getKey());
+            enabled[i] = selected.contains(list.get(i).getKey());
         }
         new AlertDialog.Builder(this).setTitle("Приложения на главном экране")
                 .setMultiChoiceItems(names, enabled, (dialog, index, checked) -> enabled[index] = checked)
