@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Wait for the input service on older Android TV images after sys.boot_completed flips.
+for attempt in {1..15}; do
+  if adb shell input keyevent KEYCODE_WAKEUP; then
+    break
+  fi
+  if [[ "$attempt" == 15 ]]; then exit 1; fi
+  sleep 2
+done
 adb shell wm size 1920x1080
 adb install app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -W -n com.haierlite.tv/.MainActivity
@@ -12,7 +20,10 @@ dump_screen() {
 
 home=$(dump_screen)
 for label in 'Алиса' 'Wi-Fi' 'Bluetooth' 'Настройки' 'ТВ-каналы' 'Приложения' 'Файлы'; do
-  grep -F "content-desc=\"$label\"" <<< "$home" >/dev/null
+  if ! grep -F "content-desc=\"$label\"" <<< "$home" >/dev/null; then
+    echo "Home control missing from the accessibility tree: $label"
+    exit 1
+  fi
 done
 if grep -E 'content-desc="(Трансляция|Яндекс ТВ)"' <<< "$home"; then
   exit 1

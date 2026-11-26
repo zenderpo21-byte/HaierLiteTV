@@ -63,15 +63,31 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Capture and test home screen on Android TV 11
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: android-tv
-          arch: x86
-          profile: tv_1080p
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: bash .github/scripts/check-tv-screen.sh
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          image="system-images;android-30;android-tv;x86"
+          "$sdkmanager" "emulator" "$image"
+          echo no | "$avdmanager" create avd --force --name haier-tv --package "$image" --device tv_1080p
+          "$ANDROID_HOME/emulator/emulator" -avd haier-tv -no-window -gpu swiftshader_indirect \
+            -noaudio -no-boot-anim -no-snapshot > "$RUNNER_TEMP/haier-emulator.log" 2>&1 &
+          emulator_pid=$!
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          if ! timeout 180 bash -c '
+            adb wait-for-device
+            until adb shell cmd package path android 2>/dev/null | grep -q "^package:"; do
+              sleep 2
+            done
+            until adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; do
+              sleep 2
+            done
+          '; then
+            tail -80 "$RUNNER_TEMP/haier-emulator.log"
+            exit 1
+          fi
+          bash .github/scripts/check-tv-screen.sh
       - name: Upload Full HD screenshot
+        if: ${{ !cancelled() && hashFiles('capture/home.png') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: HaierLiteTV-Full-HD
