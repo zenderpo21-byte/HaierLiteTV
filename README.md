@@ -1,6 +1,6 @@
 # Haier Lite TV v1.7 — High School DxD Edition
 
-A Java launcher for Android TV 11 with a burgundy theme with an optional graphite background and one centered row of original app icons. Use the plus tile or the Applications settings to manage favorites. Open settings with the gear, MENU or SETTINGS, and close the panel with Back.
+An Android TV 11 launcher with a Full HD DxD Edition layout, separate wallpaper, a row of installed app icons, and shortcuts for TV channels, applications and files. Open the applications grid or the Applications settings to manage favorites. Use the gear, MENU or SETTINGS to open settings, and Back to close the panel.
 
 The clock uses the device time zone. Yekaterinburg weather uses Open-Meteo, refreshes while the launcher is visible and labels cached readings when they are stale or a request fails. Brightness applies to the launcher window. The sleep timer shows a reminder while the launcher is visible or when it next opens after expiry. The launcher does not send a power-off command.
 
