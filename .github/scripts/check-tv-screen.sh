@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${1:-}" == --verify-boot ]]; then
+  if ! timeout 45 bash -c '
+    until adb logcat -d -s HaierBoot:I | grep -F "Boot check window finished" >/dev/null; do
+      sleep 2
+    done
+  '; then
+    adb logcat -d -s HaierBoot:I ActivityManager:W
+    exit 1
+  fi
+  boot_log=$(adb logcat -d -s HaierBoot:I)
+  grep -F 'BOOT_COMPLETED received' <<< "$boot_log"
+  grep -F 'Boot check 1/3' <<< "$boot_log"
+  grep -E 'foreground activity is not the stock Yandex HOME screen|no current foreground activity' <<< "$boot_log"
+  if grep -F 'Boot launch requested' <<< "$boot_log"; then
+    echo "Boot receiver must not take over on a non-Yandex foreground activity"
+    exit 1
+  fi
+  exit 0
+fi
+
 # Wait for the input service on older Android TV images after sys.boot_completed flips.
 for attempt in {1..15}; do
   if adb shell input keyevent KEYCODE_WAKEUP; then
@@ -77,21 +97,3 @@ fi
 adb shell cmd package set-home-activity --user 0 com.haierlite.tv/.MainActivity
 adb shell appops set com.haierlite.tv GET_USAGE_STATS allow
 adb shell appops set com.haierlite.tv SYSTEM_ALERT_WINDOW allow
-adb reboot
-timeout 150 bash -c '
-  adb wait-for-device
-  until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == 1 ]]; do
-    sleep 2
-  done
-  until adb logcat -d -s HaierBoot:I | grep -F "Boot check window finished" >/dev/null; do
-    sleep 2
-  done
-'
-boot_log=$(adb logcat -d -s HaierBoot:I)
-grep -F 'BOOT_COMPLETED received' <<< "$boot_log"
-grep -F 'Boot check 1/3' <<< "$boot_log"
-grep -E 'foreground activity is not the stock Yandex HOME screen|no current foreground activity' <<< "$boot_log"
-if grep -F 'Boot launch requested' <<< "$boot_log"; then
-  echo "Boot receiver must not take over on a non-Yandex foreground activity"
-  exit 1
-fi
