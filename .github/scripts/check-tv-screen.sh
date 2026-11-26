@@ -10,7 +10,14 @@ for attempt in {1..15}; do
   sleep 2
 done
 adb shell wm size 1920x1080
-adb install app/build/outputs/apk/debug/app-debug.apk
+adb install "${1:-app/build/outputs/apk/debug/app-debug.apk}"
+home_candidates=$(adb shell cmd package query-activities --brief \
+  -a android.intent.action.MAIN -c android.intent.category.HOME -c android.intent.category.DEFAULT)
+grep -F 'com.haierlite.tv/.MainActivity' <<< "$home_candidates"
+if ! grep -E '^[[:space:]]*[^[:space:]/]+/[^[:space:]]+' <<< "$home_candidates" | grep -vF 'com.haierlite.tv/'; then
+  echo "System launcher is missing from the HOME candidates"
+  exit 1
+fi
 adb shell am start -W -n com.haierlite.tv/.MainActivity
 
 dump_screen() {
