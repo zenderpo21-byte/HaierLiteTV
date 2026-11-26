@@ -1,6 +1,8 @@
 name: Build Haier Lite TV APK
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main, master]
 jobs:
@@ -34,7 +36,8 @@ jobs:
           "$build_tools/apksigner" verify --print-certs --min-sdk-version 30 "$apk"
           badging=$("$build_tools/aapt" dump badging "$apk")
           grep -F "package: name='com.haierlite.tv'" <<< "$badging"
-          grep -F "versionName='1.6'" <<< "$badging"
+          grep -F "versionName='1.7.4'" <<< "$badging"
+          grep -F "versionCode='21'" <<< "$badging"
           grep -F "sdkVersion:'23'" <<< "$badging"
           native_entries=$(unzip -Z1 "$apk" | awk '/^lib\/.*[.]so$/')
           if [[ -n "$native_entries" ]]; then
@@ -42,9 +45,108 @@ jobs:
           fi
           grep -F "targetSdkVersion:'30'" <<< "$badging"
           grep -F "leanback-launchable-activity:" <<< "$badging"
-      - name: Upload APK
+          grep "^launchable-activity:" <<< "$badging"
+          merged=app/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$apk" > "$RUNNER_TEMP/haier-apk-manifest.xml"
+          python3 .github/scripts/verify-home-manifest.py "$merged" "$RUNNER_TEMP/haier-apk-manifest.xml"
+      - name: Sign with the permanent release key
+        id: release_key
+        env:
+          HAIER_KEYSTORE_BASE64: ${{ secrets.HAIER_KEYSTORE_BASE64 }}
+          HAIER_KEYSTORE_PASSWORD: ${{ secrets.HAIER_KEYSTORE_PASSWORD }}
+          HAIER_KEY_PASSWORD: ${{ secrets.HAIER_KEY_PASSWORD }}
+          HAIER_KEY_ALIAS: ${{ secrets.HAIER_KEY_ALIAS }}
+        run: |
+          if [[ -z "$HAIER_KEYSTORE_BASE64" ]]; then
+            echo "::notice::Release signing secret unavailable. Publishing a CI APK for verification."
+            exit 0
+          fi
+          : "${HAIER_KEYSTORE_PASSWORD:?Missing keystore password}" "${HAIER_KEY_ALIAS:?Missing key alias}"
+          export HAIER_KEY_PASSWORD="${HAIER_KEY_PASSWORD:-$HAIER_KEYSTORE_PASSWORD}"
+          umask 077
+          keystore=$(mktemp "$RUNNER_TEMP/haier-key.XXXXXXXX")
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$HAIER_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          signed="$RUNNER_TEMP/HaierLiteTV-1.7.4.apk"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$apksigner" sign --ks "$keystore" --ks-key-alias "$HAIER_KEY_ALIAS" \
+            --ks-pass env:HAIER_KEYSTORE_PASSWORD --key-pass env:HAIER_KEY_PASSWORD \
+            --out "$signed" "$apk"
+          cert=$("$apksigner" verify --print-certs --min-sdk-version 30 "$signed" |
+            sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p')
+          if [[ "$cert" != '37afa27d8fd2fb716adf5d86dc6352eba3b8956fc69eb201eac573b9a7e85edd' ]]; then
+            echo "::error::The APK certificate differs from the pinned permanent signing certificate."
+            exit 1
+          fi
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$signed" > "$RUNNER_TEMP/haier-signed-manifest.xml"
+          python3 .github/scripts/verify-home-manifest.py "$RUNNER_TEMP/haier-signed-manifest.xml"
+          echo "compatible=true" >> "$GITHUB_OUTPUT"
+      - name: Upload release APK
+        if: steps.release_key.outputs.compatible == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: HaierLiteTV-debug-APK
+          name: HaierLiteTV-1.7.4
+          path: ${{ runner.temp }}/HaierLiteTV-1.7.4.apk
+          if-no-files-found: error
+      - name: Upload diagnostic APK
+        if: steps.release_key.outputs.compatible != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: HaierLiteTV-1.7.4-diagnostic
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Enable Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Capture and test home screen on Android TV 11
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          image="system-images;android-30;android-tv;x86"
+          printf 'y\n' | "$sdkmanager" "platform-tools" "emulator" "$image"
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          adb start-server
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/haier-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | "$avdmanager" create avd --force --name haier-tv --package "$image" --device tv_1080p
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx haier-tv
+          start_tv() {
+            local log="$1"
+            "$ANDROID_HOME/emulator/emulator" -avd haier-tv -no-window -gpu swiftshader_indirect \
+              -noaudio -no-boot-anim -no-snapshot > "$log" 2>&1 &
+            emulator_pid=$!
+            if ! timeout 120 bash -c '
+              adb wait-for-device
+              until adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; do
+                sleep 2
+              done
+            '; then
+              adb devices -l
+              tail -80 "$log"
+              return 1
+            fi
+          }
+          trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
+          start_tv "$RUNNER_TEMP/haier-emulator.log"
+          signed="$RUNNER_TEMP/HaierLiteTV-1.7.4.apk"
+          if [[ -f "$signed" ]]; then
+            bash .github/scripts/check-tv-screen.sh "$signed"
+          else
+            bash .github/scripts/check-tv-screen.sh
+          fi
+          adb emu kill
+          wait "$emulator_pid" || true
+          start_tv "$RUNNER_TEMP/haier-cold-boot.log"
+          adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+          bash .github/scripts/check-tv-screen.sh --verify-boot
+      - name: Upload Full HD screenshot
+        if: ${{ !cancelled() && hashFiles('capture/home.png') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: HaierLiteTV-Full-HD
+          path: capture/home.png
           if-no-files-found: error

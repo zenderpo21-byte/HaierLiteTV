@@ -10,6 +10,8 @@ import android.graphics.*;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
+import android.media.tv.TvContract;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -32,13 +34,15 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int WHITE = 0xfff7f8fc, MUTED = 0xffb1b7c8;
+    private static final int ACCENT = 0xffff2448;
+    private static final int OPEN_FILE = 1;
     private static final long WEATHER_INTERVAL = 30 * 60_000L;
     private static final Locale RUSSIAN = new Locale("ru", "RU");
     private static final String WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
             + "?latitude=56.84&longitude=60.61&current=temperature_2m,apparent_temperature,weather_code,is_day";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService weatherWorker = Executors.newSingleThreadExecutor();
-    private final LruCache<String, Bitmap> icons = new LruCache<>(24);
+    private final LruCache<String, Bitmap> icons = new LruCache<>(12);
     private final Map<String, AppEntry> apps = new LinkedHashMap<>();
     private final Set<String> favorites = new HashSet<>();
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", RUSSIAN);
@@ -47,8 +51,10 @@ public class MainActivity extends Activity {
     private FrameLayout root;
     private HorizontalScrollView shelf;
     private LinearLayout row, panel, weather;
-    private TextView clock, date, settingsButton;
+    private TextView clock, date;
     private View returnFocus;
+    private final TextView[] bottomControls = new TextView[3];
+    private Drawable wallpaper;
     private float scale;
     private long lastWeatherAttempt;
     private boolean offline, refreshing;
@@ -73,6 +79,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getPreferences(0);
+        BootReceiver.logLaunch(getIntent());
         favorites.addAll(prefs.getStringSet("favorites", Collections.emptySet()));
         int flags = View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
@@ -82,6 +89,16 @@ public class MainActivity extends Activity {
         scale = getResources().getDisplayMetrics().widthPixels / 1672f;
         loadApps();
         buildHome();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        BootReceiver.logLaunch(intent);
+    }
+
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_UI_HIDDEN) icons.evictAll();
     }
 
     @Override protected void onStart() {
@@ -127,15 +144,46 @@ public class MainActivity extends Activity {
         return background;
     }
 
-    private TextView button(String value, int size, Runnable action) {
-        TextView view = label(value, size, WHITE);
+    private void place(View view, int x, int y, int width, int height) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(px(width), px(height));
+        params.leftMargin = px(x);
+        params.topMargin = px(y);
+        root.addView(view, params);
+    }
+
+    private TextView control(String title, boolean showTitle, int icon, int size, Runnable action) {
+        TextView view = label(showTitle ? title : "", 25, WHITE);
         view.setId(View.generateViewId());
+        view.setContentDescription(title);
+        view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         view.setFocusable(true);
         view.setGravity(Gravity.CENTER);
+        Drawable drawable = getDrawable(icon);
+        drawable.setBounds(0, 0, px(size), px(size));
+        if (showTitle) {
+            view.setGravity(Gravity.CENTER_VERTICAL);
+            int padding = title.equals("Алиса") ? 24 : 40;
+            view.setPadding(px(padding), 0, px(12), 0);
+            view.setCompoundDrawables(drawable, null, null, null);
+            view.setCompoundDrawablePadding(px(title.equals("Алиса") ? 16 : 27));
+        } else {
+            // Draw a compound image centered in an otherwise empty button.
+            view.setPadding(px(16), 0, px(16), 0);
+            view.setCompoundDrawables(drawable, null, null, null);
+        }
+        view.setBackground(controlBackground(false));
+        view.setOnFocusChangeListener((v, focused) -> v.setBackground(controlBackground(focused)));
         view.setOnClickListener(v -> action.run());
-        view.setOnFocusChangeListener((v, focused) ->
-                v.setBackground(focused ? surface(0xff343943, 18, 0xff626a79) : null));
         return view;
+    }
+
+    private Drawable controlBackground(boolean focused) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                focused ? new int[]{0xff840b27, 0xff280c11, 0xff960721}
+                        : new int[]{0xf46e0715, 0xf51a0d0d, 0xf51a0d0d, 0xf5740818});
+        drawable.setCornerRadius(px(44));
+        drawable.setStroke(px(focused ? 3 : 1), focused ? WHITE : 0xffff092b);
+        return drawable;
     }
 
     private void buildHome() {
@@ -143,64 +191,124 @@ public class MainActivity extends Activity {
         setContentView(root);
         applyScreen();
 
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        FrameLayout.LayoutParams headerPosition = new FrameLayout.LayoutParams(-1, px(72), Gravity.TOP);
-        headerPosition.setMargins(px(70), px(34), px(54), 0);
-        root.addView(header, headerPosition);
-        TextView name = label("Haier Lite TV", 32, WHITE);
-        name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        header.addView(name);
-        TextView version = label("v1.6 Minimal", 17, WHITE);
-        version.setPadding(px(15), 0, px(15), 0);
-        version.setBackground(surface(0xff323640, 22, 0));
-        LinearLayout.LayoutParams badge = new LinearLayout.LayoutParams(-2, px(36));
-        badge.leftMargin = px(30);
-        header.addView(version, badge);
-        header.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
-        TextView search = button("⌕", 49, this::showApps);
-        search.setContentDescription("Найти приложение");
-        header.addView(search, new LinearLayout.LayoutParams(px(76), px(68)));
-        settingsButton = button("⚙", 40, this::openPanel);
-        settingsButton.setContentDescription("Настройки");
-        header.addView(settingsButton, new LinearLayout.LayoutParams(px(76), px(68)));
-        TextView sleep = button("⏻", 38, this::showTimer);
-        sleep.setContentDescription("Таймер сна");
-        header.addView(sleep, new LinearLayout.LayoutParams(px(76), px(68)));
+        View clockShade = new View(this);
+        clockShade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xd30e080a, 0xa20e080a, 0x000e080a}));
+        place(clockShade, 0, 113, 384, 267);
 
-        LinearLayout timeBlock = new LinearLayout(this);
-        timeBlock.setOrientation(LinearLayout.VERTICAL);
-        FrameLayout.LayoutParams timePosition = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.LEFT);
-        timePosition.setMargins(px(70), px(176), 0, 0);
-        root.addView(timeBlock, timePosition);
-        clock = label("", 156, WHITE);
-        clock.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
-        timeBlock.addView(clock);
-        date = label("", 34, MUTED);
-        date.setPadding(px(15), 0, 0, 0);
-        timeBlock.addView(date);
+        ImageView crest = new ImageView(this);
+        crest.setImageResource(R.drawable.dxd_crest);
+        place(crest, 40, 15, 72, 80);
+        TextView name = label("Haier Lite TV", 32, WHITE);
+        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setShadowLayer(px(4), 0, px(2), 0xff000000);
+        place(name, 127, 21, 199, 41);
+        TextView edition = label("DxD Edition", 23, ACCENT);
+        edition.setTypeface(Typeface.create("sans-serif-medium", Typeface.ITALIC));
+        place(edition, 128, 59, 182, 33);
+        TextView badge = label("Яндекс ТВ", 21, WHITE);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(surface(0xe04d0739, 18, 0xffec174b));
+        place(badge, 330, 26, 122, 33);
+
+        place(control("Алиса", true, R.drawable.ic_mic, 31, this::openAlice), 1220, 23, 178, 63);
+        place(control("Wi-Fi", false, R.drawable.ic_wifi, 31, this::showNetwork), 1415, 23, 63, 63);
+        place(control("Bluetooth", false, R.drawable.ic_bluetooth, 31, this::openBluetooth), 1494, 23, 63, 63);
+        place(control("Настройки", false, R.drawable.ic_settings, 31, this::openPanel), 1573, 23, 63, 63);
+
+        View line = new View(this);
+        line.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{ACCENT, WHITE, ACCENT, ACCENT}));
+        place(line, 56, 137, 3, 234);
+        clock = label("", 84, WHITE);
+        clock.setShadowLayer(px(5), 0, px(2), 0xff000000);
+        place(clock, 95, 118, 264, 102);
+        date = label("", 28, WHITE);
+        date.setShadowLayer(px(4), 0, px(2), 0xff000000);
+        place(date, 96, 224, 264, 38);
+        weather = new LinearLayout(this);
+        weather.setGravity(Gravity.CENTER_VERTICAL);
+        place(weather, 91, 272, 260, 62);
+        TextView city = label("Екатеринбург", 25, WHITE);
+        city.setShadowLayer(px(4), 0, px(2), 0xff000000);
+        Drawable pin = getDrawable(R.drawable.ic_pin);
+        pin.setBounds(0, 0, px(22), px(22));
+        city.setCompoundDrawables(pin, null, null, null);
+        city.setCompoundDrawablePadding(px(5));
+        place(city, 94, 342, 249, 36);
+        showWeather();
 
         shelf = new HorizontalScrollView(this);
         shelf.setFillViewport(true);
         shelf.setHorizontalScrollBarEnabled(false);
         shelf.setOverScrollMode(View.OVER_SCROLL_NEVER);
         shelf.setSmoothScrollingEnabled(true);
-        FrameLayout.LayoutParams shelfPosition = new FrameLayout.LayoutParams(-1, px(178), Gravity.CENTER);
-        shelfPosition.leftMargin = px(70);
-        shelfPosition.rightMargin = px(70);
-        root.addView(shelf, shelfPosition);
+        place(shelf, 72, 501, 764, 200);
         row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER);
+        row.setGravity(Gravity.START);
         shelf.addView(row, new HorizontalScrollView.LayoutParams(-2, -1));
-        renderFavorites();
 
-        weather = new LinearLayout(this);
-        weather.setGravity(Gravity.CENTER_VERTICAL);
-        FrameLayout.LayoutParams weatherPosition = new FrameLayout.LayoutParams(-2, px(105), Gravity.BOTTOM | Gravity.LEFT);
-        weatherPosition.setMargins(px(70), 0, 0, px(72));
-        root.addView(weather, weatherPosition);
-        showWeather();
+        bottomControls[0] = control("ТВ-каналы", true, R.drawable.ic_tv, 43, this::openChannels);
+        bottomControls[1] = control("Приложения", true, R.drawable.ic_apps, 38, this::showApps);
+        bottomControls[2] = control("Файлы", true, R.drawable.ic_folder, 43, this::openFiles);
+        for (int i = 0; i < bottomControls.length; i++) {
+            TextView button = bottomControls[i];
+            button.setNextFocusLeftId(bottomControls[Math.max(i - 1, 0)].getId());
+            button.setNextFocusRightId(bottomControls[Math.min(i + 1, bottomControls.length - 1)].getId());
+            place(button, 377 + 315 * i, 807, 288, 79);
+        }
+        renderFavorites();
+    }
+
+    private boolean tryOpen(Intent intent) {
+        try {
+            startActivity(intent);
+            return true;
+        } catch (android.content.ActivityNotFoundException | SecurityException ignored) {
+            return false;
+        }
+    }
+
+    private void openAlice() {
+        // Limit assistant intents to Yandex packages. Remote microphone events remain system-owned.
+        for (String pkg : new String[]{"ru.yandex.searchplugin", "com.yandex.tv.home",
+                "ru.yandex.yandexnavi", "com.yandex.browser"}) {
+            if (tryOpen(new Intent(Intent.ACTION_VIEW, Uri.parse("yandex://alice")).setPackage(pkg))) return;
+        }
+        for (ResolveInfo handler : getPackageManager().queryIntentActivities(
+                new Intent(Intent.ACTION_VOICE_COMMAND), 0)) {
+            String pkg = handler.activityInfo.packageName;
+            if ((pkg.startsWith("com.yandex.") || pkg.startsWith("ru.yandex."))
+                    && tryOpen(new Intent(Intent.ACTION_VOICE_COMMAND).setPackage(pkg))) return;
+        }
+        toast("Откройте Алису кнопкой микрофона на пульте");
+    }
+
+    private void openChannels() {
+        Intent intent = new Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI);
+        if (!tryOpen(intent) && !tryOpen(new Intent(Intent.ACTION_MAIN).setPackage("com.android.tv"))) {
+            toast("Приложение ТВ-каналов недоступно");
+        }
+    }
+
+    private void openFiles() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*");
+        try {
+            startActivityForResult(intent, OPEN_FILE);
+        } catch (android.content.ActivityNotFoundException | SecurityException ignored) {
+            toast("Приложение для просмотра файлов недоступно");
+        }
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != OPEN_FILE || result != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        Intent view = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, getContentResolver().getType(uri))
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (!tryOpen(view)) toast("Нет приложения для этого файла");
     }
 
     private boolean loadApps() {
@@ -225,11 +333,6 @@ public class MainActivity extends Activity {
         }
         apps.clear();
         apps.putAll(detected);
-        if (!prefs.contains("favorites") && favorites.isEmpty()) {
-            for (String pkg : new String[]{"com.google.android.youtube.tv", "com.netflix.ninja", "com.android.vending"}) {
-                if (apps.containsKey(pkg)) favorites.add(pkg);
-            }
-        }
         return changed;
     }
 
@@ -262,23 +365,34 @@ public class MainActivity extends Activity {
     }
 
     private void renderFavorites() {
+        View focus = getCurrentFocus();
+        String focusedPackage = focus instanceof Tile ? ((Tile) focus).pkg : null;
+        boolean restoreShelfFocus = panel == null && (focus == null || focusedPackage != null);
         row.removeAllViews();
+        boolean customFavorites = prefs.contains("favorites");
+        View previous = null;
+        View selected = null;
         for (Map.Entry<String, AppEntry> item : sortedApps()) {
-            if (!favorites.contains(item.getKey())) continue;
+            String pkg = item.getKey();
+            if (customFavorites && !favorites.contains(pkg)) continue;
             AppEntry entry = item.getValue();
-            addTile(new Tile(entry.title, icon(item.getKey(), entry)), () -> launch(entry));
+            Tile tile = new Tile(pkg, entry);
+            tile.setId(View.generateViewId());
+            tile.setFocusable(true);
+            tile.setOnClickListener(v -> launch(entry));
+            tile.setOnLongClickListener(v -> { showFavorites(); return true; });
+            tile.setNextFocusDownId(bottomControls[0].getId());
+            tile.setNextFocusLeftId(previous == null ? tile.getId() : previous.getId());
+            tile.setNextFocusRightId(tile.getId());
+            if (previous != null) previous.setNextFocusRightId(tile.getId());
+            row.addView(tile, new LinearLayout.LayoutParams(px(169), -1));
+            if (pkg.equals(focusedPackage)) selected = tile;
+            previous = tile;
         }
-        addTile(new Tile("Добавить приложения", null), this::showFavorites);
-        row.getChildAt(0).requestFocus();
-    }
-
-    private void addTile(Tile tile, Runnable action) {
-        tile.setId(View.generateViewId());
-        tile.setFocusable(true);
-        tile.setOnClickListener(v -> action.run());
-        tile.setOnLongClickListener(v -> { showFavorites(); return true; });
-        tile.setNextFocusUpId(settingsButton.getId());
-        row.addView(tile, new LinearLayout.LayoutParams(px(164), -1));
+        if (!restoreShelfFocus) return;
+        if (selected == null) selected = row.getChildAt(0);
+        if (selected == null) selected = bottomControls[1];
+        selected.requestFocus();
     }
 
     private Bitmap icon(String pkg, AppEntry entry) {
@@ -298,20 +412,29 @@ public class MainActivity extends Activity {
     }
 
     private final class Tile extends View {
-        private final Bitmap icon;
+        private final String pkg;
+        private final AppEntry entry;
+        private final Path corner = new Path();
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final RectF iconBounds = new RectF(), corners = new RectF();
 
-        Tile(String description, Bitmap icon) {
+        Tile(String pkg, AppEntry entry) {
             super(MainActivity.this);
-            this.icon = icon;
-            setContentDescription(description);
+            this.pkg = pkg;
+            this.entry = entry;
+            setContentDescription(entry.title);
         }
 
         @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
-            float x = w / 2f, y = h / 2f, half = px(61);
+            float x = w / 2f, y = h / 2f, half = px(59);
             iconBounds.set(x - half, y - half, x + half, y + half);
-            corners.set(px(5), px(10), w - px(5), h - px(10));
+            corners.set(px(6), px(14), w - px(6), h - px(14));
+            float left = corners.left, top = corners.top, radius = px(31), arm = px(13);
+            corner.reset();
+            corner.moveTo(left, top + radius + arm);
+            corner.lineTo(left, top + radius);
+            corner.arcTo(left, top, left + 2 * radius, top + 2 * radius, 180, 90, false);
+            corner.lineTo(left + radius + arm, top);
         }
 
         @Override protected void onFocusChanged(boolean focused, int direction, Rect previous) {
@@ -320,29 +443,26 @@ public class MainActivity extends Activity {
         }
 
         @Override protected void onDraw(Canvas canvas) {
-            paint.setColor(WHITE);
+            paint.setColor(isFocused() ? ACCENT : WHITE);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(Math.max(1, px(3)));
             if (isFocused()) {
-                canvas.save();
                 for (int i = 0; i < 4; i++) {
                     canvas.save();
-                    canvas.scale(i % 2 == 0 ? 1 : -1, i < 2 ? 1 : -1, corners.centerX(), corners.centerY());
-                    float x = corners.left, y = corners.top, r = px(27);
-                    canvas.drawArc(x, y, x + 2 * r, y + 2 * r, 180, 90, false, paint);
+                    canvas.scale(i % 2 == 0 ? 1 : -1, i < 2 ? 1 : -1,
+                            corners.centerX(), corners.centerY());
+                    paint.setColor(0x92ff0033);
+                    paint.setStrokeWidth(px(10));
+                    canvas.drawPath(corner, paint);
+                    paint.setColor(WHITE);
+                    paint.setStrokeWidth(px(4));
+                    canvas.drawPath(corner, paint);
                     canvas.restore();
                 }
-                canvas.restore();
             }
-            if (icon != null) {
-                paint.setStyle(Paint.Style.FILL);
-                canvas.drawBitmap(icon, null, iconBounds, paint);
-            } else {
-                float x = iconBounds.centerX(), y = iconBounds.centerY(), d = px(23);
-                canvas.drawLine(x - d, y, x + d, y, paint);
-                canvas.drawLine(x, y - d, x, y + d, paint);
-            }
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawBitmap(icon(pkg, entry), null, iconBounds, paint);
         }
     }
 
@@ -356,7 +476,7 @@ public class MainActivity extends Activity {
         List<Map.Entry<String, AppEntry>> list = sortedApps();
         String[] names = new String[list.size()];
         for (int i = 0; i < names.length; i++) names[i] = list.get(i).getValue().title;
-        new AlertDialog.Builder(this).setTitle("Приложения")
+        homeDialog().setTitle("Приложения")
                 .setItems(names, (dialog, index) -> launch(list.get(index).getValue()))
                 .setNeutralButton("Избранное", (dialog, which) -> showFavorites())
                 .setNegativeButton("Закрыть", null).show();
@@ -367,11 +487,12 @@ public class MainActivity extends Activity {
         List<Map.Entry<String, AppEntry>> list = sortedApps();
         String[] names = new String[list.size()];
         boolean[] enabled = new boolean[list.size()];
+        Set<String> selected = prefs.contains("favorites") ? favorites : apps.keySet();
         for (int i = 0; i < list.size(); i++) {
             names[i] = list.get(i).getValue().title;
-            enabled[i] = favorites.contains(list.get(i).getKey());
+            enabled[i] = selected.contains(list.get(i).getKey());
         }
-        new AlertDialog.Builder(this).setTitle("Приложения на главном экране")
+        homeDialog().setTitle("Приложения на главном экране")
                 .setMultiChoiceItems(names, enabled, (dialog, index, checked) -> enabled[index] = checked)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     favorites.clear();
@@ -385,13 +506,11 @@ public class MainActivity extends Activity {
     private void openPanel() {
         if (panel != null) { closePanel(); return; }
         returnFocus = getCurrentFocus();
-        FrameLayout.LayoutParams shelfPosition = (FrameLayout.LayoutParams) shelf.getLayoutParams();
-        shelfPosition.rightMargin = px(424);
-        shelf.setLayoutParams(shelfPosition);
+        shelf.setVisibility(View.INVISIBLE);
         panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(px(17), px(18), px(17), px(16));
-        panel.setBackground(surface(0xfa191d25, 32, 0xff454b58));
+        panel.setBackground(surface(0xfa21121d, 32, 0xff5f3348));
         FrameLayout.LayoutParams position = new FrameLayout.LayoutParams(px(382), -2, Gravity.RIGHT | Gravity.TOP);
         position.setMargins(0, px(158), px(27), 0);
         root.addView(panel, position);
@@ -424,7 +543,7 @@ public class MainActivity extends Activity {
         item.setFocusable(true);
         item.setOnClickListener(v -> action.run());
         item.setOnFocusChangeListener((v, focused) ->
-                v.setBackground(focused ? surface(0xff383e49, 20, 0xff666e7c) : null));
+                v.setBackground(focused ? surface(0xff4c2635, 20, ACCENT) : null));
         TextView symbol = label(glyph, 32, WHITE);
         symbol.setGravity(Gravity.CENTER);
         item.addView(symbol, new LinearLayout.LayoutParams(px(52), -1));
@@ -441,16 +560,22 @@ public class MainActivity extends Activity {
     private void closePanel() {
         root.removeView(panel);
         panel = null;
-        FrameLayout.LayoutParams shelfPosition = (FrameLayout.LayoutParams) shelf.getLayoutParams();
-        shelfPosition.rightMargin = px(70);
-        shelf.setLayoutParams(shelfPosition);
-        if (returnFocus != null && !returnFocus.requestFocus()) row.getChildAt(0).requestFocus();
+        shelf.setVisibility(View.VISIBLE);
+        if (returnFocus == null || !returnFocus.requestFocus()) {
+            View first = row.getChildAt(0);
+            (first == null ? bottomControls[1] : first).requestFocus();
+        }
         returnFocus = null;
+    }
+
+    @Override public void onUserInteraction() {
+        super.onUserInteraction();
+        BootReceiver.cancelRechecksOnInteraction(this);
     }
 
     @Override public void onBackPressed() {
         if (panel != null) closePanel();
-        else super.onBackPressed();
+        // At the root of the HOME task, Back leaves the launcher visible.
     }
 
     @Override public boolean onKeyDown(int key, KeyEvent event) {
@@ -461,8 +586,19 @@ public class MainActivity extends Activity {
         return super.onKeyDown(key, event);
     }
 
+    private AlertDialog.Builder homeDialog() {
+        return new AlertDialog.Builder(this).setOnKeyListener((dialog, key, event) -> {
+            if (key != KeyEvent.KEYCODE_BACK || panel == null) return false;
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                dialog.cancel();
+                closePanel();
+            }
+            return true;
+        });
+    }
+
     private void showScreen() {
-        new AlertDialog.Builder(this).setTitle("Экран")
+        homeDialog().setTitle("Экран")
                 .setItems(new String[]{"Яркость интерфейса", "Оформление и фон"}, (dialog, index) -> {
                     if (index == 0) showBrightness();
                     else showBackground();
@@ -470,7 +606,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBrightness() {
-        new AlertDialog.Builder(this).setTitle("Яркость только в Haier Lite TV")
+        homeDialog().setTitle("Яркость только в Haier Lite TV")
                 .setSingleChoiceItems(new String[]{"Системная", "30%", "55%", "80%", "100%"},
                         prefs.getInt("brightness_index", 0), (dialog, index) -> {
                             prefs.edit().putInt("brightness_index", index).apply();
@@ -480,8 +616,8 @@ public class MainActivity extends Activity {
     }
 
     private void showBackground() {
-        new AlertDialog.Builder(this).setTitle("Графитовый фон")
-                .setSingleChoiceItems(new String[]{"Серебристые волны", "Однотонный графит"},
+        homeDialog().setTitle("Фон")
+                .setSingleChoiceItems(new String[]{"DxD Edition", "Однотонный графит"},
                         prefs.getInt("background", 0), (dialog, index) -> {
                             prefs.edit().putInt("background", index).apply();
                             applyScreen();
@@ -493,8 +629,10 @@ public class MainActivity extends Activity {
         WindowManager.LayoutParams attrs = getWindow().getAttributes();
         attrs.screenBrightness = new float[]{-1f, .30f, .55f, .80f, 1f}[prefs.getInt("brightness_index", 0)];
         getWindow().setAttributes(attrs);
-        if (prefs.getInt("background", 0) == 0) root.setBackground(new Waves());
-        else root.setBackgroundColor(0xff11141a);
+        if (prefs.getInt("background", 0) == 0) {
+            if (wallpaper == null) wallpaper = getDrawable(R.drawable.dxd_wallpaper);
+            root.setBackground(wallpaper);
+        } else root.setBackgroundColor(0xff11141a);
     }
 
     private void showVolume() {
@@ -523,13 +661,13 @@ public class MainActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar bar) {}
             @Override public void onStopTrackingTouch(SeekBar bar) {}
         });
-        new AlertDialog.Builder(this).setTitle("Системная громкость")
+        homeDialog().setTitle("Системная громкость")
                 .setView(seek).setPositiveButton("Закрыть", null).show();
         seek.requestFocus();
     }
 
     private void showNetwork() {
-        new AlertDialog.Builder(this).setTitle("Сеть")
+        homeDialog().setTitle("Сеть")
                 .setItems(new String[]{"Wi-Fi", "Ethernet и другие сети"}, (dialog, index) -> {
                     if (index == 0) openSystem(Settings.ACTION_WIFI_SETTINGS, Settings.ACTION_SETTINGS);
                     else openSystem(Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_SETTINGS);
@@ -556,7 +694,7 @@ public class MainActivity extends Activity {
         items[minutes.length] = "Отменить таймер";
         long left = Math.max(0, (until - System.currentTimeMillis() + 59_999L) / 60_000L);
         String title = left == 0 ? "Таймер сна · напоминание" : "Таймер сна · осталось " + left + " мин";
-        new AlertDialog.Builder(this).setTitle(title).setItems(items, (dialog, index) -> {
+        homeDialog().setTitle(title).setItems(items, (dialog, index) -> {
             if (index == minutes.length) {
                 prefs.edit().remove("sleep_at").apply();
                 toast("Таймер отменён");
@@ -578,7 +716,7 @@ public class MainActivity extends Activity {
             return;
         }
         prefs.edit().remove("sleep_at").apply();
-        new AlertDialog.Builder(this).setTitle("Таймер сна завершён")
+        homeDialog().setTitle("Таймер сна завершён")
                 .setMessage("Чтобы выключить телевизор, нажмите кнопку питания на пульте.")
                 .setPositiveButton("Понятно", null).show();
     }
@@ -653,23 +791,12 @@ public class MainActivity extends Activity {
         } catch (org.json.JSONException ignored) {
             if (offline) detail = "Погода недоступна";
         }
-        weather.addView(new WeatherGlyph(kind, day), new LinearLayout.LayoutParams(px(86), px(82)));
-        View line = new View(this);
-        line.setBackgroundColor(0xff525869);
-        LinearLayout.LayoutParams separator = new LinearLayout.LayoutParams(Math.max(1, px(1)), px(70));
-        separator.setMargins(px(17), 0, px(26), 0);
-        weather.addView(line, separator);
-        LinearLayout readings = new LinearLayout(this);
-        readings.setOrientation(LinearLayout.VERTICAL);
-        readings.addView(label("Екатеринбург", 19, WHITE));
-        readings.addView(label(temperature, 58, WHITE));
-        weather.addView(readings);
-        LinearLayout description = new LinearLayout(this);
-        description.setOrientation(LinearLayout.VERTICAL);
-        description.setPadding(px(36), px(13), 0, 0);
-        description.addView(label(detail, 19, MUTED));
-        if (!feels.isEmpty()) description.addView(label(feels, 18, MUTED));
-        weather.addView(description);
+        weather.addView(new WeatherGlyph(kind, day), new LinearLayout.LayoutParams(px(85), px(72)));
+        TextView reading = label(temperature, 51, WHITE);
+        reading.setPadding(px(12), 0, 0, 0);
+        reading.setShadowLayer(px(5), 0, px(2), 0xff000000);
+        weather.addView(reading);
+        weather.setContentDescription(detail + ", " + temperature + ". " + feels);
     }
 
     private String degrees(double value) {
@@ -726,62 +853,4 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static final class Waves extends Drawable {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path[] shapes = {new Path(), new Path(), new Path()};
-        private final Shader[] fills = {
-            new RadialGradient(722, 74, 690, new int[]{0xff999eaf, 0xff343946, 0xff171a22},
-                    new float[]{0, .36f, 1}, Shader.TileMode.CLAMP),
-            new LinearGradient(715, 271, 903, 515, new int[]{0xff626d83, 0xff323946, 0xff101319},
-                    new float[]{0, .27f, .83f}, Shader.TileMode.CLAMP),
-            new RadialGradient(1103, 697, 540, new int[]{0xff929fb7, 0xff292f3c, 0xff14171e},
-                    new float[]{0, .31f, .92f}, Shader.TileMode.CLAMP)
-        };
-        private final Shader base = new LinearGradient(0, 0, 1672, 941, 0xff1a1e27, 0xff0d0f14, Shader.TileMode.CLAMP);
-        private final Shader edge = new LinearGradient(250, 250, 1100, 650,
-                new int[]{0x095c6372, 0xb1c0c8d9, 0x075c6372, 0xa5c0c8d9},
-                new float[]{0, .29f, .67f, 1}, Shader.TileMode.CLAMP);
-        Waves() {
-            shapes[0].moveTo(-20, 500);
-            shapes[0].cubicTo(240, 495, 508, 430, 580, 334);
-            shapes[0].cubicTo(622, 278, 625, 149, 704, -2);
-            shapes[0].lineTo(-20, -10);
-            shapes[0].close();
-            shapes[1].moveTo(407, 627);
-            shapes[1].cubicTo(672, 470, 764, 302, 1042, 333);
-            shapes[1].cubicTo(1133, 343, 1250, 256, 1370, 302);
-            shapes[1].cubicTo(1510, 347, 1612, 441, 1680, 480);
-            shapes[1].lineTo(1680, 951);
-            shapes[1].lineTo(-20, 951);
-            shapes[1].close();
-            shapes[2].moveTo(780, 951);
-            shapes[2].cubicTo(934, 776, 1140, 709, 1312, 654);
-            shapes[2].cubicTo(1465, 608, 1604, 612, 1680, 565);
-            shapes[2].lineTo(1680, 951);
-            shapes[2].close();
-        }
-
-        @Override public void draw(Canvas canvas) {
-            Rect bounds = getBounds();
-            canvas.save();
-            canvas.translate(bounds.left, bounds.top);
-            canvas.scale(bounds.width() / 1672f, bounds.height() / 941f);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setShader(base);
-            canvas.drawRect(0, 0, 1672, 941, paint);
-            for (int i = 0; i < shapes.length; i++) {
-                paint.setStyle(Paint.Style.FILL);
-                paint.setShader(fills[i]);
-                canvas.drawPath(shapes[i], paint);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setShader(edge);
-                paint.setStrokeWidth(1.5f);
-                canvas.drawPath(shapes[i], paint);
-            }
-            canvas.restore();
-        }
-        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
-        @Override public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); }
-        @Override public int getOpacity() { return PixelFormat.OPAQUE; }
-    }
 }
