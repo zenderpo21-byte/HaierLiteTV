@@ -19,16 +19,6 @@ dump_screen() {
 }
 
 home=$(dump_screen)
-for label in 'Алиса' 'Wi-Fi' 'Bluetooth' 'Настройки' 'ТВ-каналы' 'Приложения' 'Файлы'; do
-  if ! grep -F "content-desc=\"$label\"" <<< "$home" >/dev/null; then
-    echo "Home control missing from the accessibility tree: $label"
-    exit 1
-  fi
-done
-if grep -E 'content-desc="(Трансляция|Яндекс ТВ)"' <<< "$home"; then
-  exit 1
-fi
-
 mkdir -p capture
 adb exec-out screencap -p > capture/home.png
 python3 - <<'PYPNG'
@@ -39,6 +29,16 @@ with Path('capture/home.png').open('rb') as screenshot:
     assert screenshot.read(8) == b'\x89PNG\r\n\x1a\n'
     assert struct.unpack('>II', screenshot.read(16)[8:]) == (1920, 1080)
 PYPNG
+
+for label in 'Алиса' 'Wi-Fi' 'Bluetooth' 'Настройки' 'ТВ-каналы' 'Приложения' 'Файлы'; do
+  if ! grep -F "content-desc=\"$label\"" <<< "$home" >/dev/null; then
+    echo "Home control missing from the accessibility tree: $label"
+    exit 1
+  fi
+done
+if grep -E 'content-desc="(Трансляция|Яндекс ТВ)"' <<< "$home"; then
+  exit 1
+fi
 
 adb shell input keyevent KEYCODE_DPAD_DOWN
 adb shell input keyevent KEYCODE_DPAD_CENTER
