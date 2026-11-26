@@ -67,7 +67,8 @@ jobs:
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           image="system-images;android-30;android-tv;x86"
-          printf 'y\n' | "$sdkmanager" "emulator" "$image"
+          printf 'y\n' | "$sdkmanager" "platform-tools" "emulator" "$image"
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
           adb start-server
           echo no | "$avdmanager" create avd --force --name haier-tv --package "$image" --device tv_1080p
           "$ANDROID_HOME/emulator/emulator" -avd haier-tv -no-window -gpu swiftshader_indirect \
