@@ -43,7 +43,12 @@ for label in 'Алиса' 'Wi-Fi' 'Bluetooth' 'Настройки' 'ТВ-кан�
     exit 1
   fi
 done
-if grep -E 'content-desc="(Трансляция|Яндекс ТВ)"' <<< "$home"; then
+if grep -E 'content-desc="(Трансляция|Яндекс ТВ|Открыть ТВ-каналы|Все приложения)"' <<< "$home"; then
+  exit 1
+fi
+
+if ! grep -E 'class="android.widget.HorizontalScrollView"[^>]*bounds="\[83,575\]\[960,805\]"' <<< "$home" >/dev/null; then
+  echo "Installed app shelf must end in the middle of the Full HD display"
   exit 1
 fi
 

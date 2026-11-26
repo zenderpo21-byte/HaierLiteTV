@@ -36,8 +36,8 @@ jobs:
           "$build_tools/apksigner" verify --print-certs --min-sdk-version 30 "$apk"
           badging=$("$build_tools/aapt" dump badging "$apk")
           grep -F "package: name='com.haierlite.tv'" <<< "$badging"
-          grep -F "versionName='1.7.1'" <<< "$badging"
-          grep -F "versionCode='18'" <<< "$badging"
+          grep -F "versionName='1.7.2'" <<< "$badging"
+          grep -F "versionCode='19'" <<< "$badging"
           grep -F "sdkVersion:'23'" <<< "$badging"
           native_entries=$(unzip -Z1 "$apk" | awk '/^lib\/.*[.]so$/')
           if [[ -n "$native_entries" ]]; then
@@ -68,7 +68,7 @@ jobs:
           trap 'rm -f "$keystore"' EXIT
           printf '%s' "$HAIER_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           apk=app/build/outputs/apk/debug/app-debug.apk
-          signed="$RUNNER_TEMP/HaierLiteTV-1.7.1.apk"
+          signed="$RUNNER_TEMP/HaierLiteTV-1.7.2.apk"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           "$apksigner" sign --ks "$keystore" --ks-key-alias "$HAIER_KEY_ALIAS" \
             --ks-pass env:HAIER_KEYSTORE_PASSWORD --key-pass env:HAIER_KEY_PASSWORD \
@@ -86,14 +86,14 @@ jobs:
         if: steps.previous_key.outputs.compatible == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: HaierLiteTV-1.7.1
-          path: ${{ runner.temp }}/HaierLiteTV-1.7.1.apk
+          name: HaierLiteTV-1.7.2
+          path: ${{ runner.temp }}/HaierLiteTV-1.7.2.apk
           if-no-files-found: error
       - name: Upload diagnostic APK
         if: steps.previous_key.outputs.compatible != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: HaierLiteTV-1.7.1-diagnostic
+          name: HaierLiteTV-1.7.2-diagnostic
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - name: Enable Android emulator acceleration
@@ -130,7 +130,12 @@ jobs:
             tail -80 "$RUNNER_TEMP/haier-emulator.log"
             exit 1
           fi
-          bash .github/scripts/check-tv-screen.sh
+          signed="$RUNNER_TEMP/HaierLiteTV-1.7.2.apk"
+          if [[ -f "$signed" ]]; then
+            bash .github/scripts/check-tv-screen.sh "$signed"
+          else
+            bash .github/scripts/check-tv-screen.sh
+          fi
       - name: Upload Full HD screenshot
         if: ${{ !cancelled() && hashFiles('capture/home.png') != '' }}
         uses: actions/upload-artifact@v4

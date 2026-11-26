@@ -36,22 +36,13 @@ public class MainActivity extends Activity {
     private static final int WHITE = 0xfff7f8fc, MUTED = 0xffb1b7c8;
     private static final int ACCENT = 0xffff2448;
     private static final int OPEN_FILE = 1;
-    private static final String[][] APP_SLOTS = {
-        {"com.google.android.youtube.tv"},
-        {"ru.kinopoisk.tv", "ru.kinopoisk"},
-        {"ru.ivi.client"},
-        {"ru.rutube.app", "ru.rutube"},
-        {"ru.yandex.searchplugin", "com.yandex.tv.home"},
-        {"org.telegram.messenger"},
-        {"com.android.vending"}
-    };
     private static final long WEATHER_INTERVAL = 30 * 60_000L;
     private static final Locale RUSSIAN = new Locale("ru", "RU");
     private static final String WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
             + "?latitude=56.84&longitude=60.61&current=temperature_2m,apparent_temperature,weather_code,is_day";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService weatherWorker = Executors.newSingleThreadExecutor();
-    private final LruCache<String, Bitmap> icons = new LruCache<>(24);
+    private final LruCache<String, Bitmap> icons = new LruCache<>(12);
     private final Map<String, AppEntry> apps = new LinkedHashMap<>();
     private final Set<String> favorites = new HashSet<>();
     private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", RUSSIAN);
@@ -88,6 +79,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getPreferences(0);
+        BootReceiver.logLaunch(getIntent());
         favorites.addAll(prefs.getStringSet("favorites", Collections.emptySet()));
         int flags = View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
@@ -97,6 +89,16 @@ public class MainActivity extends Activity {
         scale = getResources().getDisplayMetrics().widthPixels / 1672f;
         loadApps();
         buildHome();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        BootReceiver.logLaunch(intent);
+    }
+
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_UI_HIDDEN) icons.evictAll();
     }
 
     @Override protected void onStart() {
@@ -241,9 +243,9 @@ public class MainActivity extends Activity {
         shelf.setHorizontalScrollBarEnabled(false);
         shelf.setOverScrollMode(View.OVER_SCROLL_NEVER);
         shelf.setSmoothScrollingEnabled(true);
-        place(shelf, 72, 501, 1528, 200);
+        place(shelf, 72, 501, 764, 200);
         row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER);
+        row.setGravity(Gravity.START);
         shelf.addView(row, new HorizontalScrollView.LayoutParams(-2, -1));
 
         bottomControls[0] = control("ТВ-каналы", true, R.drawable.ic_tv, 43, this::openChannels);
@@ -362,63 +364,35 @@ public class MainActivity extends Activity {
         return list;
     }
 
-    private Set<String> defaultFavorites() {
-        Set<String> selected = new HashSet<>();
-        for (String[] candidates : APP_SLOTS) {
-            for (String pkg : candidates) {
-                if (!apps.containsKey(pkg)) continue;
-                selected.add(pkg);
-                break;
-            }
-        }
-        return selected;
-    }
-
     private void renderFavorites() {
+        View focus = getCurrentFocus();
+        String focusedPackage = focus instanceof Tile ? ((Tile) focus).pkg : null;
+        boolean restoreShelfFocus = panel == null && (focus == null || focusedPackage != null);
         row.removeAllViews();
-        Bitmap tvIcon = Bitmap.createBitmap(px(132), px(132), Bitmap.Config.ARGB_8888);
-        Drawable tv = getDrawable(R.drawable.ic_play_tile);
-        tv.setBounds(0, 0, tvIcon.getWidth(), tvIcon.getHeight());
-        tv.draw(new Canvas(tvIcon));
-        addTile(new Tile("Открыть ТВ-каналы", tvIcon, 66), this::openChannels);
-        Set<String> selected = prefs.contains("favorites") ? favorites : defaultFavorites();
-        Set<String> shown = new HashSet<>();
-        for (String[] candidates : APP_SLOTS) {
-            String pkg = null;
-            for (String candidate : candidates) {
-                if (!apps.containsKey(candidate) || !selected.contains(candidate)) continue;
-                pkg = candidate;
-                break;
-            }
-            if (pkg == null) {
-                row.addView(new Space(this), new LinearLayout.LayoutParams(px(169), -1));
-            } else {
-                shown.add(pkg);
-                addFavorite(pkg);
-            }
-        }
+        boolean customFavorites = prefs.contains("favorites");
+        View previous = null;
+        View selected = null;
         for (Map.Entry<String, AppEntry> item : sortedApps()) {
-            if (selected.contains(item.getKey()) && !shown.contains(item.getKey())) {
-                addFavorite(item.getKey());
-            }
+            String pkg = item.getKey();
+            if (customFavorites && !favorites.contains(pkg)) continue;
+            AppEntry entry = item.getValue();
+            Tile tile = new Tile(pkg, entry);
+            tile.setId(View.generateViewId());
+            tile.setFocusable(true);
+            tile.setOnClickListener(v -> launch(entry));
+            tile.setOnLongClickListener(v -> { showFavorites(); return true; });
+            tile.setNextFocusDownId(bottomControls[0].getId());
+            tile.setNextFocusLeftId(previous == null ? tile.getId() : previous.getId());
+            tile.setNextFocusRightId(tile.getId());
+            if (previous != null) previous.setNextFocusRightId(tile.getId());
+            row.addView(tile, new LinearLayout.LayoutParams(px(169), -1));
+            if (pkg.equals(focusedPackage)) selected = tile;
+            previous = tile;
         }
-        addTile(new Tile("Все приложения", null, 63), this::showApps);
-        row.getChildAt(0).requestFocus();
-    }
-
-    private void addFavorite(String pkg) {
-        AppEntry entry = apps.get(pkg);
-        addTile(new Tile(entry.title, icon(pkg, entry), 59), () -> launch(entry));
-    }
-
-    private void addTile(Tile tile, Runnable action) {
-        tile.setId(View.generateViewId());
-        tile.setFocusable(true);
-        tile.setOnClickListener(v -> action.run());
-        tile.setOnLongClickListener(v -> { showFavorites(); return true; });
-        int section = Math.min(row.getChildCount() / 3, bottomControls.length - 1);
-        tile.setNextFocusDownId(bottomControls[section].getId());
-        row.addView(tile, new LinearLayout.LayoutParams(px(169), -1));
+        if (!restoreShelfFocus) return;
+        if (selected == null) selected = row.getChildAt(0);
+        if (selected == null) selected = bottomControls[1];
+        selected.requestFocus();
     }
 
     private Bitmap icon(String pkg, AppEntry entry) {
@@ -438,23 +412,29 @@ public class MainActivity extends Activity {
     }
 
     private final class Tile extends View {
-        private final Bitmap icon;
+        private final String pkg;
+        private final AppEntry entry;
+        private final Path corner = new Path();
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final RectF iconBounds = new RectF(), corners = new RectF();
 
-        private final int iconHalfSize;
-
-        Tile(String description, Bitmap icon, int iconHalfSize) {
+        Tile(String pkg, AppEntry entry) {
             super(MainActivity.this);
-            this.icon = icon;
-            this.iconHalfSize = iconHalfSize;
-            setContentDescription(description);
+            this.pkg = pkg;
+            this.entry = entry;
+            setContentDescription(entry.title);
         }
 
         @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
-            float x = w / 2f, y = h / 2f, half = px(iconHalfSize);
+            float x = w / 2f, y = h / 2f, half = px(59);
             iconBounds.set(x - half, y - half, x + half, y + half);
             corners.set(px(6), px(14), w - px(6), h - px(14));
+            float left = corners.left, top = corners.top, radius = px(31), arm = px(13);
+            corner.reset();
+            corner.moveTo(left, top + radius + arm);
+            corner.lineTo(left, top + radius);
+            corner.arcTo(left, top, left + 2 * radius, top + 2 * radius, 180, 90, false);
+            corner.lineTo(left + radius + arm, top);
         }
 
         @Override protected void onFocusChanged(boolean focused, int direction, Rect previous) {
@@ -472,12 +452,6 @@ public class MainActivity extends Activity {
                     canvas.save();
                     canvas.scale(i % 2 == 0 ? 1 : -1, i < 2 ? 1 : -1,
                             corners.centerX(), corners.centerY());
-                    float x = corners.left, y = corners.top, r = px(31), arm = px(13);
-                    Path corner = new Path();
-                    corner.moveTo(x, y + r + arm);
-                    corner.lineTo(x, y + r);
-                    corner.arcTo(x, y, x + 2 * r, y + 2 * r, 180, 90, false);
-                    corner.lineTo(x + r + arm, y);
                     paint.setColor(0x92ff0033);
                     paint.setStrokeWidth(px(10));
                     canvas.drawPath(corner, paint);
@@ -488,16 +462,7 @@ public class MainActivity extends Activity {
                 }
             }
             paint.setStyle(Paint.Style.FILL);
-            if (icon != null) {
-                canvas.drawBitmap(icon, null, iconBounds, paint);
-            } else {
-                paint.setColor(0x99403235);
-                canvas.drawRoundRect(iconBounds, px(29), px(29), paint);
-                Drawable grid = getDrawable(R.drawable.ic_apps);
-                int x = (int) iconBounds.centerX(), y = (int) iconBounds.centerY(), half = px(31);
-                grid.setBounds(x - half, y - half, x + half, y + half);
-                grid.draw(canvas);
-            }
+            canvas.drawBitmap(icon(pkg, entry), null, iconBounds, paint);
         }
     }
 
@@ -522,7 +487,7 @@ public class MainActivity extends Activity {
         List<Map.Entry<String, AppEntry>> list = sortedApps();
         String[] names = new String[list.size()];
         boolean[] enabled = new boolean[list.size()];
-        Set<String> selected = prefs.contains("favorites") ? favorites : defaultFavorites();
+        Set<String> selected = prefs.contains("favorites") ? favorites : apps.keySet();
         for (int i = 0; i < list.size(); i++) {
             names[i] = list.get(i).getValue().title;
             enabled[i] = selected.contains(list.get(i).getKey());
@@ -596,7 +561,10 @@ public class MainActivity extends Activity {
         root.removeView(panel);
         panel = null;
         shelf.setVisibility(View.VISIBLE);
-        if (returnFocus != null && !returnFocus.requestFocus()) row.getChildAt(0).requestFocus();
+        if (returnFocus == null || !returnFocus.requestFocus()) {
+            View first = row.getChildAt(0);
+            (first == null ? bottomControls[1] : first).requestFocus();
+        }
         returnFocus = null;
     }
 
