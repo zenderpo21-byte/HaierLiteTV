@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
     private LinearLayout row, panel, weather;
     private TextView clock, date;
     private View returnFocus;
+    private final TextView[] bottomControls = new TextView[3];
     private Drawable wallpaper;
     private float scale;
     private long lastWeatherAttempt;
@@ -245,12 +246,15 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER);
         shelf.addView(row, new HorizontalScrollView.LayoutParams(-2, -1));
 
-        place(control("ТВ-каналы", true, R.drawable.ic_tv, 43, this::openChannels),
-                377, 807, 288, 79);
-        place(control("Приложения", true, R.drawable.ic_apps, 38, this::showApps),
-                692, 807, 288, 79);
-        place(control("Файлы", true, R.drawable.ic_folder, 43, this::openFiles),
-                1007, 807, 288, 79);
+        bottomControls[0] = control("ТВ-каналы", true, R.drawable.ic_tv, 43, this::openChannels);
+        bottomControls[1] = control("Приложения", true, R.drawable.ic_apps, 38, this::showApps);
+        bottomControls[2] = control("Файлы", true, R.drawable.ic_folder, 43, this::openFiles);
+        for (int i = 0; i < bottomControls.length; i++) {
+            TextView button = bottomControls[i];
+            button.setNextFocusLeftId(bottomControls[Math.max(i - 1, 0)].getId());
+            button.setNextFocusRightId(bottomControls[Math.min(i + 1, bottomControls.length - 1)].getId());
+            place(button, 377 + 315 * i, 807, 288, 79);
+        }
         renderFavorites();
     }
 
@@ -412,6 +416,8 @@ public class MainActivity extends Activity {
         tile.setFocusable(true);
         tile.setOnClickListener(v -> action.run());
         tile.setOnLongClickListener(v -> { showFavorites(); return true; });
+        int section = Math.min(row.getChildCount() / 3, bottomControls.length - 1);
+        tile.setNextFocusDownId(bottomControls[section].getId());
         row.addView(tile, new LinearLayout.LayoutParams(px(169), -1));
     }
 
