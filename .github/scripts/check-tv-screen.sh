@@ -94,6 +94,6 @@ if [[ -z "$home_activity" || "$home_activity" == *com.haierlite.tv* ]]; then
 fi
 
 # Exercise the real BOOT_COMPLETED delivery on Android TV 11. This image has no Yandex firmware.
-adb shell cmd package set-home-activity --user 0 com.haierlite.tv/.MainActivity
+adb shell cmd role add-role-holder --user 0 android.app.role.HOME com.haierlite.tv
 adb shell appops set com.haierlite.tv GET_USAGE_STATS allow
 adb shell appops set com.haierlite.tv SYSTEM_ALERT_WINDOW allow

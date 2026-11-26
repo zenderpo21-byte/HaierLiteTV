@@ -1,6 +1,7 @@
 package com.haierlite.tv;
 
 import android.app.AppOpsManager;
+import android.app.role.RoleManager;
 import android.app.usage.UsageEvents;
 import android.app.usage.UsageStatsManager;
 import android.content.BroadcastReceiver;
@@ -30,8 +31,8 @@ public final class BootReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
         Log.i(TAG, "BOOT_COMPLETED received");
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !isDefaultHome(context)) {
-            Log.i(TAG, "Boot launch skipped: unsupported SDK or Haier Lite TV is not selected as HOME");
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.i(TAG, "Boot launch skipped: Android version lacks the required foreground checks");
             return;
         }
 
@@ -59,7 +60,7 @@ public final class BootReceiver extends BroadcastReceiver {
                     index++;
                     if (continueChecks && index < CHECK_AT_MS.length
                             && handler.postAtTime(this, firstCheck + CHECK_AT_MS[index])) {
-                        Log.i(TAG, "Waiting for a usable foreground event");
+                        Log.i(TAG, "Waiting for HOME selection or a usable foreground event");
                     } else {
                         Log.i(TAG, "Boot check window finished");
                         broadcast.finish();
@@ -70,6 +71,10 @@ public final class BootReceiver extends BroadcastReceiver {
     }
 
     private static boolean isDefaultHome(Context context) {
+        RoleManager roles = context.getSystemService(RoleManager.class);
+        if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_HOME)) {
+            return roles.isRoleHeld(RoleManager.ROLE_HOME);
+        }
         Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
         ResolveInfo resolved = context.getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
         return resolved != null && resolved.activityInfo != null
@@ -78,8 +83,8 @@ public final class BootReceiver extends BroadcastReceiver {
 
     private static boolean shouldCheckAgain(Context context) {
         if (!isDefaultHome(context)) {
-            Log.i(TAG, "Boot launch skipped: selected HOME changed");
-            return false;
+            Log.i(TAG, "Boot launch deferred: Haier Lite TV is not the current HOME role holder");
+            return true;
         }
         AppOpsManager ops = context.getSystemService(AppOpsManager.class);
         if (ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(),
