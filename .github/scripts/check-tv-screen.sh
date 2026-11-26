@@ -11,11 +11,12 @@ if [[ "${1:-}" == --verify-boot ]]; then
     exit 1
   fi
   boot_log=$(adb logcat -d -s HaierBoot:I)
+  printf '%s\n' "$boot_log"
   grep -F 'BOOT_COMPLETED received' <<< "$boot_log"
   grep -F 'Boot check 1/3' <<< "$boot_log"
-  grep -E 'foreground activity is not the stock Yandex HOME screen|no current foreground activity' <<< "$boot_log"
-  if grep -F 'Boot launch requested' <<< "$boot_log"; then
-    echo "Boot receiver must not take over on a non-Yandex foreground activity"
+  grep -E 'foreground activity is not the stock Yandex HOME screen|no current foreground activity|not the current HOME role holder|usage access is required|background-launch permission was not granted|playback or microphone capture is active' <<< "$boot_log"
+  if grep -E 'Boot launch requested|Boot check failed safely' <<< "$boot_log"; then
+    echo "The boot check should finish without an exception or a foreground takeover"
     exit 1
   fi
   exit 0
