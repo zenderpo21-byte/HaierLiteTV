@@ -72,3 +72,26 @@ if [[ -z "$home_activity" || "$home_activity" == *com.haierlite.tv* ]]; then
   echo "System HOME did not come to the foreground: $home_activity"
   exit 1
 fi
+
+# Exercise the real BOOT_COMPLETED delivery on Android TV 11. This image has no Yandex firmware.
+adb shell cmd package set-home-activity --user 0 com.haierlite.tv/.MainActivity
+adb shell appops set com.haierlite.tv GET_USAGE_STATS allow
+adb shell appops set com.haierlite.tv SYSTEM_ALERT_WINDOW allow
+adb reboot
+timeout 150 bash -c '
+  adb wait-for-device
+  until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == 1 ]]; do
+    sleep 2
+  done
+  until adb logcat -d -s HaierBoot:I | grep -F "Boot check window finished" >/dev/null; do
+    sleep 2
+  done
+'
+boot_log=$(adb logcat -d -s HaierBoot:I)
+grep -F 'BOOT_COMPLETED received' <<< "$boot_log"
+grep -F 'Boot check 1/3' <<< "$boot_log"
+grep -E 'foreground activity is not the stock Yandex HOME screen|no current foreground activity' <<< "$boot_log"
+if grep -F 'Boot launch requested' <<< "$boot_log"; then
+  echo "Boot receiver must not take over on a non-Yandex foreground activity"
+  exit 1
+fi

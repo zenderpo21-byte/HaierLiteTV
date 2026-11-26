@@ -1,4 +1,4 @@
-# Haier Lite TV v1.7.2 — High School DxD Edition
+# Haier Lite TV v1.7.3 — High School DxD Edition
 
 An Android TV 11 launcher with a Full HD DxD Edition layout, separate wallpaper, a scrollable row of installed app icons on the left half of the screen, and shortcuts for TV channels, applications and files. Open the applications grid or the Applications settings to manage favorites. Use the gear, MENU or SETTINGS to open settings, and Back to close the panel.
 
@@ -12,10 +12,19 @@ Open Haier Lite TV from the Yandex TV apps list. Haier Lite TV is available in t
 
 ## Boot diagnostics
 
-Android sends `BOOT_COMPLETED` after startup. When Haier Lite TV is selected as HOME, it schedules one attempt after eight seconds. If the display is interactive or media is active, it skips the attempt to avoid taking over the screen. Android 11 can also reject background activity launches. Inspect the receiver, scheduling and actual activity entry with `adb logcat -d -s HaierBoot`.
+After `BOOT_COMPLETED`, the app checks at 2, 5 and 8 seconds while it is selected as HOME. It requests at most one launch and only when it can verify that the stock Yandex Home activity is in front, with no active playback or microphone capture. It does not draw any overlays. Android 11 firmware can reject the request.
 
-## Updating an existing installation
+On the target TV, grant the optional special access using system settings if available, or through authorized ADB without root:
 
-An update requires the original signing key. GitHub Actions publishes **HaierLiteTV-1.7.2** only when the APK certificate matches the v1.7 build. Configure the original keystore through Actions secrets `HAIER_KEYSTORE_BASE64`, `HAIER_KEYSTORE_PASSWORD`, `HAIER_KEY_ALIAS` and, if different from the keystore password, `HAIER_KEY_PASSWORD`.
+```sh
+adb shell appops set com.haierlite.tv GET_USAGE_STATS allow
+adb shell appops set com.haierlite.tv SYSTEM_ALERT_WINDOW allow
+adb reboot
+adb logcat -d -s HaierBoot
+```
 
-Without the original key, Actions publishes **HaierLiteTV-1.7.2-diagnostic** for testing on a clean emulator or device. You can compare an installed APK's certificate with `apksigner verify --print-certs`.
+A `MainActivity received the boot launch` entry confirms that the request reached the activity. Without the optional access, the normal HOME button continues to work.
+
+## Signing and updates
+
+v1.7.3 starts the permanent signing lineage. It requires a clean installation when the previous APK was signed with a different key. Keep an offline backup of the private keystore and configure it through Actions secrets `HAIER_KEYSTORE_BASE64`, `HAIER_KEYSTORE_PASSWORD`, `HAIER_KEY_ALIAS` and, if different from the keystore password, `HAIER_KEY_PASSWORD`. The workflow checks the permanent certificate fingerprint before uploading a release APK.

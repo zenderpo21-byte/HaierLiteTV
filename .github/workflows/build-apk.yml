@@ -36,8 +36,8 @@ jobs:
           "$build_tools/apksigner" verify --print-certs --min-sdk-version 30 "$apk"
           badging=$("$build_tools/aapt" dump badging "$apk")
           grep -F "package: name='com.haierlite.tv'" <<< "$badging"
-          grep -F "versionName='1.7.2'" <<< "$badging"
-          grep -F "versionCode='19'" <<< "$badging"
+          grep -F "versionName='1.7.3'" <<< "$badging"
+          grep -F "versionCode='20'" <<< "$badging"
           grep -F "sdkVersion:'23'" <<< "$badging"
           native_entries=$(unzip -Z1 "$apk" | awk '/^lib\/.*[.]so$/')
           if [[ -n "$native_entries" ]]; then
@@ -49,8 +49,8 @@ jobs:
           merged=app/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml
           "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$apk" > "$RUNNER_TEMP/haier-apk-manifest.xml"
           python3 .github/scripts/verify-home-manifest.py "$merged" "$RUNNER_TEMP/haier-apk-manifest.xml"
-      - name: Sign with the previous version's key
-        id: previous_key
+      - name: Sign with the permanent release key
+        id: release_key
         env:
           HAIER_KEYSTORE_BASE64: ${{ secrets.HAIER_KEYSTORE_BASE64 }}
           HAIER_KEYSTORE_PASSWORD: ${{ secrets.HAIER_KEYSTORE_PASSWORD }}
@@ -58,7 +58,7 @@ jobs:
           HAIER_KEY_ALIAS: ${{ secrets.HAIER_KEY_ALIAS }}
         run: |
           if [[ -z "$HAIER_KEYSTORE_BASE64" ]]; then
-            echo "::notice::Previous signing key unavailable. Publishing a diagnostic APK only."
+            echo "::notice::Release signing secret unavailable. Publishing a CI APK for verification."
             exit 0
           fi
           : "${HAIER_KEYSTORE_PASSWORD:?Missing keystore password}" "${HAIER_KEY_ALIAS:?Missing key alias}"
@@ -68,32 +68,32 @@ jobs:
           trap 'rm -f "$keystore"' EXIT
           printf '%s' "$HAIER_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           apk=app/build/outputs/apk/debug/app-debug.apk
-          signed="$RUNNER_TEMP/HaierLiteTV-1.7.2.apk"
+          signed="$RUNNER_TEMP/HaierLiteTV-1.7.3.apk"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           "$apksigner" sign --ks "$keystore" --ks-key-alias "$HAIER_KEY_ALIAS" \
             --ks-pass env:HAIER_KEYSTORE_PASSWORD --key-pass env:HAIER_KEY_PASSWORD \
             --out "$signed" "$apk"
           cert=$("$apksigner" verify --print-certs --min-sdk-version 30 "$signed" |
             sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p')
-          if [[ "$cert" != '6860e8e5b666e97ef318c7f256568aef3b3d3827d7dc9f3e245dbd18105c3533' ]]; then
-            echo "::error::The APK certificate differs from the v1.7 GitHub Actions certificate."
+          if [[ "$cert" != '37afa27d8fd2fb716adf5d86dc6352eba3b8956fc69eb201eac573b9a7e85edd' ]]; then
+            echo "::error::The APK certificate differs from the pinned permanent signing certificate."
             exit 1
           fi
           "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print "$signed" > "$RUNNER_TEMP/haier-signed-manifest.xml"
           python3 .github/scripts/verify-home-manifest.py "$RUNNER_TEMP/haier-signed-manifest.xml"
           echo "compatible=true" >> "$GITHUB_OUTPUT"
-      - name: Upload upgrade-compatible APK
-        if: steps.previous_key.outputs.compatible == 'true'
+      - name: Upload release APK
+        if: steps.release_key.outputs.compatible == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: HaierLiteTV-1.7.2
-          path: ${{ runner.temp }}/HaierLiteTV-1.7.2.apk
+          name: HaierLiteTV-1.7.3
+          path: ${{ runner.temp }}/HaierLiteTV-1.7.3.apk
           if-no-files-found: error
       - name: Upload diagnostic APK
-        if: steps.previous_key.outputs.compatible != 'true'
+        if: steps.release_key.outputs.compatible != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: HaierLiteTV-1.7.2-diagnostic
+          name: HaierLiteTV-1.7.3-diagnostic
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - name: Enable Android emulator acceleration
@@ -130,7 +130,7 @@ jobs:
             tail -80 "$RUNNER_TEMP/haier-emulator.log"
             exit 1
           fi
-          signed="$RUNNER_TEMP/HaierLiteTV-1.7.2.apk"
+          signed="$RUNNER_TEMP/HaierLiteTV-1.7.3.apk"
           if [[ -f "$signed" ]]; then
             bash .github/scripts/check-tv-screen.sh "$signed"
           else
